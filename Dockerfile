@@ -1,18 +1,20 @@
-FROM python:3
+FROM python:3.11
 
 ENV PYTHONUNBUFFERED=1
+ENV POETRY_VIRTUALENVS_CREATE=0
 
-WORKDIR /tmp/setup
-
-COPY . .
-
-RUN python3 setup.py sdist bdist_wheel
-
-RUN python3 -m pip install --no-cache-dir dist/*.whl
+RUN curl -sSL https://install.python-poetry.org | python3 -
+RUN apt-get update && apt-get install -y ffmpeg && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-RUN rm -rf /tmp/setup
+COPY pyproject.toml poetry.lock /app/
+
+RUN /root/.local/bin/poetry install
+
+COPY . .
+
+RUN /root/.local/bin/poetry install
 
 HEALTHCHECK CMD ["smart_tv_telegram", "--healthcheck"]
 

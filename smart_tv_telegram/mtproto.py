@@ -8,6 +8,7 @@ import typing
 import pyrogram
 
 from async_lru import alru_cache
+from pyrogram.enums import ParseMode
 from pyrogram.handlers.handler import Handler
 from pyrogram.raw.functions.auth import ExportAuthorization, ImportAuthorization
 from pyrogram.raw.functions.help import GetConfig
@@ -41,11 +42,11 @@ class Mtproto:
         await self._client.send_message(
             chat_id,
             text=text,
-            parse_mode="html",
+            parse_mode=ParseMode.HTML,
             reply_to_message_id=message_id
         )
 
-    @alru_cache(cache_exceptions=False)
+    @alru_cache
     async def get_message(self, message_id: int) -> Message:
         messages = await self._client.invoke(GetMessages(id=[InputMessageID(id=message_id)]))
 
