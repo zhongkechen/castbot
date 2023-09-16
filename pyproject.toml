@@ -33,6 +33,8 @@ voluptuous = "0.13.1"
 yarl = "^1.9"
 zeroconf = "^0.112"
 tgcrypto = "^1.2"
+you-get = "^0.4"
+youtube-dl = { git = "https://github.com/ytdl-org/youtube-dl.git" }
 
 [tool.poetry.scripts]
 smart_tv_telegram = "smart_tv_telegram.__main__:entry_point"
