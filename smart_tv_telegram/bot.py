@@ -135,6 +135,9 @@ class Bot:
         self._functions = {}
         self._devices = {}
 
+        self._http.set_on_stream_closed_handler(self.get_on_stream_closed())
+        self.prepare()
+
     def get_on_stream_closed(self) -> OnStreamClosed:
         return OnStreamClosedHandler(self._mtproto, self._functions, self._devices)
 
@@ -255,7 +258,7 @@ class Bot:
         if timeout_context.expired:
             await reply("Timeout while communicate with the device")
 
-    async def _new_document(self, _: Client, message: Message, user_message = None):
+    async def _new_document(self, _: Client, message: Message, user_message=None):
         devices = []
 
         for finder in self._finders.get_finders(self._config):
@@ -324,4 +327,3 @@ class Bot:
         task = asyncio.create_task(self._download_url(_, message, url))
         self._state_machine.set_state(message, States.DOWNLOAD, DownloadStateData(message.id, url, task))
         await message.reply(f"Downloading url {url}", reply_markup=_REMOVE_KEYBOARD, disable_web_page_preview=True)
-

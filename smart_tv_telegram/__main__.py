@@ -8,15 +8,12 @@ import traceback
 import typing
 import urllib.request
 
-from smart_tv_telegram import Http, Mtproto, Config, Bot, DeviceFinderCollection
-from smart_tv_telegram.devices import UpnpDeviceFinder, ChromecastDeviceFinder, VlcDeviceFinder, \
-    WebDeviceFinder, XbmcDeviceFinder
+from smart_tv_telegram import Http, Mtproto, Config, Bot, device_finder
 
 
 def open_config(parser: argparse.ArgumentParser, arg: str) -> typing.Optional[Config]:
     if not os.path.exists(arg):
         parser.error(f"The file `{arg}` does not exist")
-
     elif not os.path.isfile(arg):
         parser.error(f"`{arg}` is not a file")
 
@@ -32,20 +29,18 @@ def open_config(parser: argparse.ArgumentParser, arg: str) -> typing.Optional[Co
     return None
 
 
-async def async_main(config: Config, devices: DeviceFinderCollection):
+async def async_main(config: Config):
     mtproto = Mtproto(config)
-    http = Http(mtproto, config, devices)
-    bot = Bot(mtproto, config, http, devices)
-    http.set_on_stream_closed_handler(bot.get_on_stream_closed())
-    bot.prepare()
+    http = Http(mtproto, config, device_finder)
+    bot = Bot(mtproto, config, http, device_finder)
 
     await mtproto.start()
     await http.start()
 
 
-def main(config: Config, devices: DeviceFinderCollection):
+def main(config: Config):
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(async_main(config, devices))
+    loop.run_until_complete(async_main(config))
 
 
 def health_check(config: Config):
@@ -59,7 +54,7 @@ def health_check(config: Config):
     return 0
 
 
-def arg_parser(devices: DeviceFinderCollection):
+def entry_point():
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config", type=lambda x: open_config(parser, x), default="config.ini")
     parser.add_argument("-v", "--verbosity", type=int, choices=[0, 1, 2], default=0)
@@ -79,18 +74,7 @@ def arg_parser(devices: DeviceFinderCollection):
     if args.healthcheck:
         sys.exit(health_check(args.config))
 
-    main(args.config, devices)
-
-
-def entry_point():
-    _devices = DeviceFinderCollection()
-    _devices.register_finder(UpnpDeviceFinder())
-    _devices.register_finder(ChromecastDeviceFinder())
-    _devices.register_finder(VlcDeviceFinder())
-    _devices.register_finder(WebDeviceFinder())
-    _devices.register_finder(XbmcDeviceFinder())
-
-    arg_parser(_devices)
+    main(args.config)
 
 
 if __name__ == "__main__":

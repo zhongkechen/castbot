@@ -26,25 +26,16 @@ class OnStreamClosed(abc.ABC):
 
 
 class Http:
-    _mtproto: Mtproto
-    _config: Config
-    _finders: DeviceFinderCollection
-    _on_stream_closed: typing.Optional[OnStreamClosed] = None
-
-    _tokens: typing.Set[int]
-    _downloaded_blocks: typing.Dict[int, typing.Set[int]]
-    _stream_debounce: typing.Dict[int, AsyncDebounce]
-    _stream_transports: typing.Dict[int, typing.Set[asyncio.Transport]]
-
     def __init__(self, mtproto: Mtproto, config: Config, finders: DeviceFinderCollection):
         self._mtproto = mtproto
         self._config = config
         self._finders = finders
 
-        self._tokens = set()
-        self._downloaded_blocks = {}
-        self._stream_debounce = {}
-        self._stream_transports = {}
+        self._tokens: typing.Set[int] = set()
+        self._downloaded_blocks: typing.Dict[int, typing.Set[int]] = {}
+        self._stream_debounce: typing.Dict[int, AsyncDebounce] = {}
+        self._stream_transports: typing.Dict[int, typing.Set[asyncio.Transport]] = {}
+        self._on_stream_closed: typing.Optional[OnStreamClosed] = None
 
     def set_on_stream_closed_handler(self, handler: OnStreamClosed):
         self._on_stream_closed = handler

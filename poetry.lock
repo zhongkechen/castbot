@@ -778,6 +778,35 @@ idna = ">=2.0"
 multidict = ">=4.0"
 
 [[package]]
+name = "you-get"
+version = "0.4.1650"
+description = "Dumb downloader that scrapes the web"
+optional = false
+python-versions = "*"
+files = [
+    {file = "you-get-0.4.1650.tar.gz", hash = "sha256:b3c944cf7a63cc468cccc8816dce7fc008c2e6b5ba52aefe5ce2081818a3ad47"},
+    {file = "you_get-0.4.1650-py3-none-any.whl", hash = "sha256:214db46ffa01ea0cb66c2b085aef27cd1764130e13741dcddfb9b8c2f1dd3306"},
+]
+
+[package.extras]
+socks = ["PySocks"]
+
+[[package]]
+name = "youtube-dl"
+version = "2021.12.17"
+description = "YouTube video downloader"
+optional = false
+python-versions = "*"
+files = []
+develop = false
+
+[package.source]
+type = "git"
+url = "https://github.com/ytdl-org/youtube-dl.git"
+reference = "HEAD"
+resolved_reference = "66ab0814c4baa2dc79c2dd5287bc0ad61a37c5b9"
+
+[[package]]
 name = "zeroconf"
 version = "0.112.0"
 description = "A pure python implementation of multicast DNS service discovery"
@@ -853,4 +882,4 @@ ifaddr = ">=0.1.7"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "0c6fc087c3ecb56f20d9dbdb632f7bcb622caf10371ae079dcef4c94c91b4e55"
+content-hash = "7780d8aa36eea50fa369d6c33bb713ec75f420e852303b7370afb43380ed49b3"

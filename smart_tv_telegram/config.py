@@ -8,191 +8,107 @@ __all__ = [
 
 
 class Config:
-    _api_id: int
-    _api_hash: str
-    _token: str
-    _session_name: str
-    _file_fake_fw_wait: float
+    api_id: int
+    api_hash: str
+    token: str
+    session_name: str
+    file_fake_fw_wait: float
 
-    _device_request_timeout: int
+    device_request_timeout: int
 
-    _listen_host: str
-    _listen_port: int
+    listen_host: str
+    listen_port: int
 
-    _upnp_enabled: bool
-    _upnp_scan_timeout: int = 0
+    upnp_enabled: bool
+    upnp_scan_timeout: int = 0
 
-    _chromecast_enabled: bool
-    _chromecast_scan_timeout: int = 0
+    chromecast_enabled: bool
+    chromecast_scan_timeout: int = 0
 
-    _web_ui_enabled: bool
-    _web_ui_password: str = ""
+    web_ui_enabled: bool
+    web_ui_password: str = ""
 
-    _xbmc_enabled: bool
-    _xbmc_devices: typing.List[dict]
+    xbmc_enabled: bool
+    xbmc_devices: typing.List[dict]
 
-    _vlc_enabled: bool
-    _vlc_devices: typing.List[dict]
+    vlc_enabled: bool
+    vlc_devices: typing.List[dict]
 
-    _request_gone_timeout: int
+    request_gone_timeout: int
 
-    _admins: typing.List[int]
-    _block_size: int
+    admins: typing.List[int]
+    block_size: int
 
     def __init__(self, path: str):
         config = configparser.ConfigParser()
         config.read(path)
 
-        self._api_id = int(config["mtproto"]["api_id"])
-        self._api_hash = str(config["mtproto"]["api_hash"])
-        self._token = str(config["mtproto"]["token"])
-        self._session_name = str(config["mtproto"]["session_name"])
-        self._file_fake_fw_wait = float(config["mtproto"]["file_fake_fw_wait"])
+        self.api_id = int(config["mtproto"]["api_id"])
+        self.api_hash = str(config["mtproto"]["api_hash"])
+        self.token = str(config["mtproto"]["token"])
+        self.session_name = str(config["mtproto"]["session_name"])
+        self.file_fake_fw_wait = float(config["mtproto"]["file_fake_fw_wait"])
 
-        self._listen_port = int(config["http"]["listen_port"])
-        self._listen_host = str(config["http"]["listen_host"])
+        self.listen_port = int(config["http"]["listen_port"])
+        self.listen_host = str(config["http"]["listen_host"])
 
-        self._request_gone_timeout = int(config["bot"]["request_gone_timeout"])
-        self._device_request_timeout = int(config["discovery"]["device_request_timeout"])
+        self.request_gone_timeout = int(config["bot"]["request_gone_timeout"])
+        self.device_request_timeout = int(config["discovery"]["device_request_timeout"])
 
-        self._upnp_enabled = bool(int(config["discovery"]["upnp_enabled"]))
+        self.upnp_enabled = bool(int(config["discovery"]["upnp_enabled"]))
 
-        if self._upnp_enabled:
-            self._upnp_scan_timeout = int(config["discovery"]["upnp_scan_timeout"])
+        if self.upnp_enabled:
+            self.upnp_scan_timeout = int(config["discovery"]["upnp_scan_timeout"])
 
             if self.upnp_scan_timeout > self.device_request_timeout:
                 raise ValueError("upnp_scan_timeout should < device_request_timeout")
 
-        self._web_ui_enabled = bool(int(config["web_ui"]["enabled"]))
+        self.web_ui_enabled = bool(int(config["web_ui"]["enabled"]))
 
-        if self._web_ui_enabled:
-            self._web_ui_password = config["web_ui"]["password"]
+        if self.web_ui_enabled:
+            self.web_ui_password = config["web_ui"]["password"]
 
-        self._chromecast_enabled = bool(int(config["discovery"]["chromecast_enabled"]))
+        self.chromecast_enabled = bool(int(config["discovery"]["chromecast_enabled"]))
 
-        self._xbmc_enabled = bool(int(config["discovery"]["xbmc_enabled"]))
+        self.xbmc_enabled = bool(int(config["discovery"]["xbmc_enabled"]))
 
-        if self._xbmc_enabled:
-            self._xbmc_devices = ast.literal_eval(config["discovery"]["xbmc_devices"])
+        if self.xbmc_enabled:
+            self.xbmc_devices = ast.literal_eval(config["discovery"]["xbmc_devices"])
 
-            if not isinstance(self._xbmc_devices, list):
+            if not isinstance(self.xbmc_devices, list):
                 raise ValueError("xbmc_devices should be a list")
 
-            if not all(isinstance(x, dict) for x in self._xbmc_devices):
+            if not all(isinstance(x, dict) for x in self.xbmc_devices):
                 raise ValueError("xbmc_devices should contain only dict")
 
         else:
-            self._xbmc_devices = []
+            self.xbmc_devices = []
 
-        self._vlc_enabled = bool(int(config["discovery"]["vlc_enabled"]))
+        self.vlc_enabled = bool(int(config["discovery"]["vlc_enabled"]))
 
-        if self._vlc_enabled:
-            self._vlc_devices = ast.literal_eval(config["discovery"]["vlc_devices"])
+        if self.vlc_enabled:
+            self.vlc_devices = ast.literal_eval(config["discovery"]["vlc_devices"])
 
-            if not isinstance(self._xbmc_devices, list):
+            if not isinstance(self.xbmc_devices, list):
                 raise ValueError("vlc_devices should be a list")
 
-            if not all(isinstance(x, dict) for x in self._xbmc_devices):
+            if not all(isinstance(x, dict) for x in self.xbmc_devices):
                 raise ValueError("vlc_devices should contain only dict")
 
         else:
-            self._vlc_devices = []
+            self.vlc_devices = []
 
-        if self._chromecast_enabled:
-            self._chromecast_scan_timeout = int(config["discovery"]["chromecast_scan_timeout"])
+        if self.chromecast_enabled:
+            self.chromecast_scan_timeout = int(config["discovery"]["chromecast_scan_timeout"])
 
             if self.chromecast_scan_timeout > self.device_request_timeout:
                 raise ValueError("chromecast_scan_timeout should < device_request_timeout")
 
-        self._admins = ast.literal_eval(config["bot"]["admins"])
-        self._block_size = int(config["bot"]["block_size"])
+        self.admins = ast.literal_eval(config["bot"]["admins"])
+        self.block_size = int(config["bot"]["block_size"])
 
-        if not isinstance(self._admins, list):
+        if not isinstance(self.admins, list):
             raise ValueError("admins should be a list")
 
-        if not all(isinstance(x, int) for x in self._admins):
+        if not all(isinstance(x, int) for x in self.admins):
             raise ValueError("admins list should contain only integers")
-
-    @property
-    def web_ui_enabled(self) -> bool:
-        return self._web_ui_enabled
-
-    @property
-    def web_ui_password(self) -> str:
-        return self._web_ui_password
-
-    @property
-    def request_gone_timeout(self) -> int:
-        return self._request_gone_timeout
-
-    @property
-    def file_fake_fw_wait(self) -> float:
-        return self._file_fake_fw_wait
-
-    @property
-    def api_id(self) -> int:
-        return self._api_id
-
-    @property
-    def api_hash(self) -> str:
-        return self._api_hash
-
-    @property
-    def token(self) -> str:
-        return self._token
-
-    @property
-    def session_name(self) -> str:
-        return self._session_name
-
-    @property
-    def listen_host(self) -> str:
-        return self._listen_host
-
-    @property
-    def listen_port(self) -> int:
-        return self._listen_port
-
-    @property
-    def upnp_enabled(self) -> bool:
-        return self._upnp_enabled
-
-    @property
-    def upnp_scan_timeout(self) -> int:
-        return self._upnp_scan_timeout
-
-    @property
-    def chromecast_enabled(self) -> bool:
-        return self._chromecast_enabled
-
-    @property
-    def chromecast_scan_timeout(self) -> int:
-        return self._chromecast_scan_timeout
-
-    @property
-    def xbmc_enabled(self) -> bool:
-        return self._xbmc_enabled
-
-    @property
-    def xbmc_devices(self) -> typing.List[dict]:
-        return self._xbmc_devices
-
-    @property
-    def vlc_enabled(self) -> bool:
-        return self._vlc_enabled
-
-    @property
-    def vlc_devices(self) -> typing.List[dict]:
-        return self._vlc_devices
-
-    @property
-    def admins(self) -> typing.List[int]:
-        return self._admins
-
-    @property
-    def block_size(self) -> int:
-        return self._block_size
-
-    @property
-    def device_request_timeout(self) -> int:
-        return self._device_request_timeout
