@@ -109,12 +109,19 @@ class TelegramStateMachine:
 
         return States.NOTHING, False
 
-    def set_state(self, message: Message, state: States, data: typing.Union[bool, StateData]) -> bool:
+    def set_state(self, user_id: int, video_message: Message, state: States, data: typing.Union[bool, StateData]) -> bool:
         if isinstance(data, bool) or data.get_associated_state() == state:
-            self._states[message.from_user.id] = (state, data)
+            self._states[user_id] = (state, data)
             return True
 
         raise TypeError()
+
+
+class UserData:
+    selected_device: typing.Optional[Device] = None
+
+    def __init__(self, selected_device):
+        self.selected_device = selected_device
 
 
 class Bot:
@@ -125,6 +132,7 @@ class Bot:
     _finders: DeviceFinderCollection
     _functions: typing.Dict[int, typing.Dict[int, DevicePlayerFunction]]
     _devices: typing.Dict[int, Device]
+    _user_data: typing.Dict[int, UserData]
 
     def __init__(self, mtproto: Mtproto, config: Config, http: Http, finders: DeviceFinderCollection):
         self._config = config
@@ -134,6 +142,8 @@ class Bot:
         self._state_machine = TelegramStateMachine()
         self._functions = {}
         self._devices = {}
+        self._all_devices = []
+        self._user_data = {}
 
         self._http.set_on_stream_closed_handler(self.get_on_stream_closed())
         self.prepare()
@@ -143,6 +153,8 @@ class Bot:
 
     def prepare(self):
         admin_filter = filters.chat(self._config.admins) & filters.private
+        self._mtproto.register(MessageHandler(self._device_selector, filters.command("select_device") & admin_filter))
+
         state_filter = create(lambda _, __, m: self._state_machine.get_state(m)[0] == States.NOTHING)
         self._mtproto.register(MessageHandler(self._new_document, filters.document & admin_filter & state_filter))
         self._mtproto.register(MessageHandler(self._new_document, filters.video & admin_filter))
@@ -153,13 +165,16 @@ class Bot:
         self._mtproto.register(MessageHandler(self._new_link, filters.text & admin_filter & state_filter))
 
         admin_filter_inline = create(lambda _, __, m: m.from_user.id in self._config.admins)
-        self._mtproto.register(CallbackQueryHandler(self._device_player_function, admin_filter_inline))
+        self._mtproto.register(CallbackQueryHandler(self._callback_handler, admin_filter_inline))
 
         state_filter = create(lambda _, __, m: self._state_machine.get_state(m)[0] == States.SELECT)
         self._mtproto.register(MessageHandler(self._select_device, filters.text & admin_filter & state_filter))
 
-    async def _device_player_function(self, _: Client, message: CallbackQuery):
+    async def _callback_handler(self, _: Client, message: CallbackQuery):
         data = message.data
+
+        if data.startswith("s:"):
+            return await self._select_device(message)
 
         try:
             data = int(data)
@@ -189,36 +204,59 @@ class Bot:
         else:
             await message.answer("done")
 
-    async def _select_device(self, _: Client, message: Message):
-        data: SelectStateData
-        _, data = self._state_machine.get_state(message)
-
-        self._state_machine.set_state(message, States.NOTHING, False)
-        reply = functools.partial(message.reply, reply_markup=_REMOVE_KEYBOARD)
-
-        if message.text == _CANCEL_BUTTON:
-            await reply("Cancelled")
-            return
-
+    async def _select_device(self, message: CallbackQuery):
+        data = message.data
+        device_name = data.split(":", 1)[1]
         try:
             device = next(
                 device
-                for device in data.devices
-                if repr(device) == message.text
+                for device in self._all_devices
+                if repr(device) == device_name
             )
         except StopIteration:
-            await reply("Wrong device")
+            await message.answer("Wrong device")
             return
 
+        self._user_data[message.from_user.id] = UserData(device)
+        await message.answer("Selected " + device_name)
+
+    async def _device_selector(self, client: Client, message: Message):
+        self._all_devices = []
+
+        for finder in self._finders.get_finders(self._config):
+            with async_timeout.timeout(self._config.device_request_timeout + 1):
+                self._all_devices.extend(await finder.find(self._config))
+
+        if self._all_devices:
+            buttons = [[InlineKeyboardButton(repr(device), "s:" + repr(device))] for device in self._all_devices]
+            await message.reply("Select a device", reply_markup=InlineKeyboardMarkup(buttons), reply_to_message_id=message.id)
+        else:
+            await message.reply("Supported devices not found in the network")
+
+    async def _new_document(self, _: Client, message: Message, user_message=None):
+        user_id = (user_message or message).from_user.id
+        user_data = self._user_data.get(user_id)
+        reply = message.reply
+        if not user_data or not user_data.selected_device:
+            await reply("No device selected")
+            return
+
+        device = user_data.selected_device
+        msg_id = message.id
         async with async_timeout.timeout(self._config.device_request_timeout) as timeout_context:
             token = secret_token()
-            local_token = self._http.add_remote_token(data.msg_id, token)
-            uri = build_uri(self._config, data.msg_id, token)
+            local_token = self._http.add_remote_token(msg_id, token)
+            uri = build_uri(self._config, msg_id, token)
+
+            try:
+                filename = pyrogram_filename(message)
+            except TypeError:
+                filename = "None"
 
             # noinspection PyBroadException
             try:
                 await device.stop()
-                await device.play(uri, data.filename, local_token)
+                await device.play(uri, str(filename), local_token)
 
             except Exception as ex:
                 traceback.print_exc()
@@ -245,7 +283,7 @@ class Bot:
 
                     await message.reply(
                         f"Device <code>{html.escape(device.get_device_name())}</code>\n"
-                        f"controller for file <code>{data.msg_id}</code>",
+                        f"controller for file <code>{msg_id}</code>",
                         reply_markup=InlineKeyboardMarkup(buttons)
                     )
 
@@ -253,43 +291,13 @@ class Bot:
                     await stub_message.delete()
 
                 else:
-                    await reply(f"Playing file <code>{data.msg_id}</code>")
+                    await reply(f"Playing file <code>{msg_id}</code>")
 
         if timeout_context.expired:
             await reply("Timeout while communicate with the device")
 
-    async def _new_document(self, _: Client, message: Message, user_message=None):
-        devices = []
 
-        for finder in self._finders.get_finders(self._config):
-            with async_timeout.timeout(self._config.device_request_timeout + 1):
-                devices.extend(await finder.find(self._config))
-
-        if devices:
-            try:
-                filename = pyrogram_filename(message)
-            except TypeError:
-                filename = "None"
-
-            self._state_machine.set_state(
-                user_message or message,
-                States.SELECT,
-                SelectStateData(
-                    message.id,
-                    str(filename),
-                    devices.copy()
-                )
-            )
-
-            buttons = [[KeyboardButton(repr(device))] for device in devices]
-            buttons.append([KeyboardButton(_CANCEL_BUTTON)])
-            markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True)
-            await message.reply("Select a device", reply_markup=markup)
-
-        else:
-            await message.reply("Supported devices not found in the network", reply_markup=_REMOVE_KEYBOARD)
-
-    async def _download_url(self, client, message, url):
+    async def _download_url(self, client, message, url, reply_message):
         try:
             with tempfile.TemporaryDirectory() as tmpdir:
                 if 'youtube' in url or 'youtu.be' in url:
@@ -303,14 +311,14 @@ class Bot:
                 await process.communicate()
 
                 file_stats = os.stat(output_filename)
-                await message.reply(f"Download completed. Uploading video (size={file_stats.st_size})")
+                await reply_message.edit_text(f"Download completed. Uploading video (size={file_stats.st_size})")
                 reader = open(output_filename, mode='rb')
-                video_message = await message.reply_video(reader)
+                video_message = await message.reply_video(reader, reply_to_message_id=message.id)
 
             await self._new_document(client, video_message, user_message=message)
         except Exception as e:
-            self._state_machine.set_state(message, States.NOTHING, False)
-            await message.reply(f"Exception thrown {e} when downloading {url}: {traceback.format_exc()}")
+            self._state_machine.set_state(message.from_user.id, message, States.NOTHING, False)
+            await reply_message.edit_text(f"Exception thrown {e} when downloading {url}: {traceback.format_exc()}")
 
     async def _new_link(self, _: Client, message: Message):
         state, state_data = self._state_machine.get_state(message)
@@ -324,6 +332,6 @@ class Bot:
             return await message.reply("Not a supported link", reply_markup=_REMOVE_KEYBOARD)
 
         url = result.group(0)
-        task = asyncio.create_task(self._download_url(_, message, url))
-        self._state_machine.set_state(message, States.DOWNLOAD, DownloadStateData(message.id, url, task))
-        await message.reply(f"Downloading url {url}", reply_markup=_REMOVE_KEYBOARD, disable_web_page_preview=True)
+        reply_message = await message.reply(f"Downloading url {url}", reply_to_message_id=message.id, disable_web_page_preview=True)
+        task = asyncio.create_task(self._download_url(_, message, url, reply_message))
+        self._state_machine.set_state(message.from_user.id, message, States.DOWNLOAD, DownloadStateData(message.id, url, task))

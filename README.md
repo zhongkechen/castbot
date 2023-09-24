@@ -1,41 +1,42 @@
-# smart-tv-telegram [![PyPI](https://img.shields.io/pypi/v/smart-tv-telegram)](https://pypi.org/project/smart-tv-telegram/) [![PyPI - License](https://img.shields.io/pypi/l/smart-tv-telegram)](https://github.com/andrew-ld/smart-tv-telegram/blob/master/LICENSE) [Docker](https://hub.docker.com/r/andrewhyphenld/smart-tv-telegram)
-A Telegram Bot to stream content on your smart TV (also Chromecast, FireTV and other UPnP device)
+# smart-tv-telegram
+
+A Telegram Bot to stream contents (Telegram videos, Youtube videos and more) to your smart TV
 
 ### Demonstration video
 [![poc](https://i.ibb.co/ct8Qb3z/Screenshot-20200827-200637.png)](https://player.vimeo.com/video/452289383)
 
 
 ## Feature
-- Streaming, the bot will not have to download the entire file before playing it on your device
-- You can play anything if your device has the right codec
-- You can stream on any device that supports UPnP (AVTransport)
-- Chromecast, Vlc (telnet api) and Kodi (xbmc http api) support
-- Streaming over HTTP
+- Stream Telegram videos to any device that supports UPnP (AVTransport), Chromecast, Vlc (telnet api), Kodi (xbmc http api)
 - Web interface that plays videos in your browser
+- Download videos by URLs and stream to devices
 
-Note: Chromecast (1st, 2nd and 3rd Gen.) [only supports H.264 and VP8 video codecs](https://developers.google.com/cast/docs/media#video_codecs)
+## Known issues
 
-Note: Most LG TVs with WebOS have an incorrect UPnP implementation, throw it in the trash and buy a new TV
+- Chromecast (1st, 2nd and 3rd Gen.) [only supports H.264 and VP8 video codecs](https://developers.google.com/cast/docs/media#video_codecs)
+- Most LG TVs with WebOS have an incorrect UPnP implementation, throw it in the trash and buy a new TV
 
 ## How-to setup
 Make sure you have an updated version of python, only the latest version will be supported
 
-(currently it also works on Python 3.6)
+(currently it also works on Python 3.8)
 
-- Download the repository
-- Install python dependencies from requirements.txt
+- Install Poetry if it's not installed yet
+- Clone the repository
+- Install python dependencies
 - Copy config.ini.example to config.ini
 - Edit config.ini
 
 ```bash
+# install poetry
+curl -sSL https://install.python-poetry.org | python3 -
+
 git clone https://github.com/andrew-ld/smart-tv-telegram
 cd smart-tv-telegram
-python3 -m pip install wheel
-python3 setup.py sdist bdist_wheel
-python3 -m pip install dist/*.whl
+poetry install
 cp config.ini.example config.ini
 nano config.ini
-smart_tv_telegram -c config.ini -v 1
+poetry run smart_tv_telegram -c config.ini -v 1
 ```
 
 ## How-to setup (Docker)
@@ -51,7 +52,7 @@ docker image build -t smart-tv-telegram:latest .
 docker run --network host -v "$(pwd)/config.ini:/app/config.ini:ro" -d smart-tv-telegram:latest
 ```
 
-## Troubleshooting
+## FAQ
 
 **Q:** How do I use the web interface?
 
