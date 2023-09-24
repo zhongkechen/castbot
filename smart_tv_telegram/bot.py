@@ -1,7 +1,6 @@
 import abc
 import asyncio
 import enum
-import functools
 import html
 import os
 import os.path
@@ -14,8 +13,7 @@ import async_timeout
 from pyrogram import Client, filters
 from pyrogram.filters import create
 from pyrogram.handlers import MessageHandler, CallbackQueryHandler
-from pyrogram.types import ReplyKeyboardRemove, Message, KeyboardButton, ReplyKeyboardMarkup, CallbackQuery, \
-    InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.types import ReplyKeyboardRemove, Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from . import Config, Mtproto, Http, OnStreamClosed, DeviceFinderCollection
 from .devices import Device, DevicePlayerFunction
@@ -155,20 +153,16 @@ class Bot:
         admin_filter = filters.chat(self._config.admins) & filters.private
         self._mtproto.register(MessageHandler(self._device_selector, filters.command("select_device") & admin_filter))
 
-        state_filter = create(lambda _, __, m: self._state_machine.get_state(m)[0] == States.NOTHING)
-        self._mtproto.register(MessageHandler(self._new_document, filters.document & admin_filter & state_filter))
+        self._mtproto.register(MessageHandler(self._new_document, filters.document & admin_filter))
         self._mtproto.register(MessageHandler(self._new_document, filters.video & admin_filter))
         self._mtproto.register(MessageHandler(self._new_document, filters.audio & admin_filter))
         self._mtproto.register(MessageHandler(self._new_document, filters.animation & admin_filter))
         self._mtproto.register(MessageHandler(self._new_document, filters.voice & admin_filter))
         self._mtproto.register(MessageHandler(self._new_document, filters.video_note & admin_filter))
-        self._mtproto.register(MessageHandler(self._new_link, filters.text & admin_filter & state_filter))
+        self._mtproto.register(MessageHandler(self._new_link, filters.text & admin_filter))
 
         admin_filter_inline = create(lambda _, __, m: m.from_user.id in self._config.admins)
         self._mtproto.register(CallbackQueryHandler(self._callback_handler, admin_filter_inline))
-
-        state_filter = create(lambda _, __, m: self._state_machine.get_state(m)[0] == States.SELECT)
-        self._mtproto.register(MessageHandler(self._select_device, filters.text & admin_filter & state_filter))
 
     async def _callback_handler(self, _: Client, message: CallbackQuery):
         data = message.data
@@ -296,7 +290,6 @@ class Bot:
         if timeout_context.expired:
             await reply("Timeout while communicate with the device")
 
-
     async def _download_url(self, client, message, url, reply_message):
         try:
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -317,14 +310,9 @@ class Bot:
 
             await self._new_document(client, video_message, user_message=message)
         except Exception as e:
-            self._state_machine.set_state(message.from_user.id, message, States.NOTHING, False)
             await reply_message.edit_text(f"Exception thrown {e} when downloading {url}: {traceback.format_exc()}")
 
     async def _new_link(self, _: Client, message: Message):
-        state, state_data = self._state_machine.get_state(message)
-        if state == States.DOWNLOAD:
-            return await message.reply("Still downloading link", reply_markup=_REMOVE_KEYBOARD)
-
         text = message.text.strip()
 
         result = re.search(_URL_PATTERN, text)
@@ -333,5 +321,4 @@ class Bot:
 
         url = result.group(0)
         reply_message = await message.reply(f"Downloading url {url}", reply_to_message_id=message.id, disable_web_page_preview=True)
-        task = asyncio.create_task(self._download_url(_, message, url, reply_message))
-        self._state_machine.set_state(message.from_user.id, message, States.DOWNLOAD, DownloadStateData(message.id, url, task))
+        asyncio.create_task(self._download_url(_, message, url, reply_message))
