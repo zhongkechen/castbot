@@ -1,6 +1,4 @@
-import abc
 import asyncio
-import enum
 import html
 import os
 import os.path
@@ -26,42 +24,6 @@ __all__ = [
 _REMOVE_KEYBOARD = ReplyKeyboardRemove()
 _CANCEL_BUTTON = "^Cancel"
 _URL_PATTERN = r'(http|https):\/\/([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:\/~+#-]*[\w@?^=%&\/~+#-])'
-
-
-class States(enum.Enum):
-    NOTHING = enum.auto()
-    SELECT = enum.auto()
-    DOWNLOAD = enum.auto()
-
-
-class StateData(abc.ABC):
-    @abc.abstractmethod
-    def get_associated_state(self) -> States:
-        raise NotImplementedError
-
-
-class SelectStateData(StateData):
-    msg_id: int
-    filename: str
-    devices: typing.List[Device]
-
-    def get_associated_state(self) -> States:
-        return States.SELECT
-
-    def __init__(self, msg_id: int, filename: str, devices: typing.List[Device]):
-        self.msg_id = msg_id
-        self.filename = filename
-        self.devices = devices
-
-
-class DownloadStateData(StateData):
-    def get_associated_state(self) -> States:
-        return States.DOWNLOAD
-
-    def __init__(self, msg_id: int, url: str, task: asyncio.Task):
-        self.msg_id = msg_id
-        self.url = url
-        self.task = task
 
 
 class OnStreamClosedHandler(OnStreamClosed):
@@ -93,28 +55,6 @@ class OnStreamClosedHandler(OnStreamClosed):
             await on_close(local_token)
 
 
-class TelegramStateMachine:
-    _states: typing.Dict[int, typing.Tuple[States, typing.Union[bool, StateData]]]
-
-    def __init__(self):
-        self._states = {}
-
-    def get_state(self, message: Message) -> typing.Tuple[States, typing.Union[bool, StateData]]:
-        user_id = message.from_user.id
-
-        if user_id in self._states:
-            return self._states[user_id]
-
-        return States.NOTHING, False
-
-    def set_state(self, user_id: int, video_message: Message, state: States, data: typing.Union[bool, StateData]) -> bool:
-        if isinstance(data, bool) or data.get_associated_state() == state:
-            self._states[user_id] = (state, data)
-            return True
-
-        raise TypeError()
-
-
 class UserData:
     selected_device: typing.Optional[Device] = None
 
@@ -122,26 +62,33 @@ class UserData:
         self.selected_device = selected_device
 
 
+class PlayingVideo:
+    def __init__(self, user_id: int, video_message: Message, control_message: Message):
+        self.user_id = user_id
+        self.video_message = video_message
+        self.control_message = control_message
+
+
 class Bot:
     _config: Config
-    _state_machine: TelegramStateMachine
     _mtproto: Mtproto
     _http: Http
     _finders: DeviceFinderCollection
-    _functions: typing.Dict[int, typing.Dict[int, DevicePlayerFunction]]
+    _functions: typing.Dict[int, typing.Dict[int, typing.Union[DevicePlayerFunction, typing.Callable]]]
     _devices: typing.Dict[int, Device]
     _user_data: typing.Dict[int, UserData]
+    _playing_videos: typing.Dict[int, PlayingVideo]
 
     def __init__(self, mtproto: Mtproto, config: Config, http: Http, finders: DeviceFinderCollection):
         self._config = config
         self._mtproto = mtproto
         self._http = http
         self._finders = finders
-        self._state_machine = TelegramStateMachine()
         self._functions = {}
         self._devices = {}
         self._all_devices = []
         self._user_data = {}
+        self._playing_videos = {}
 
         self._http.set_on_stream_closed_handler(self.get_on_stream_closed())
         self.prepare()
@@ -164,41 +111,97 @@ class Bot:
         admin_filter_inline = create(lambda _, __, m: m.from_user.id in self._config.admins)
         self._mtproto.register(CallbackQueryHandler(self._callback_handler, admin_filter_inline))
 
+    def _get_user_device(self, user_id):
+        user_data = self._user_data.get(user_id)
+        if not user_data or not user_data.selected_device:
+            return
+
+        return user_data.selected_device
+
     async def _callback_handler(self, _: Client, message: CallbackQuery):
         data = message.data
 
         if data.startswith("s:"):
-            return await self._select_device(message)
+            return await self._callback_select_device(message)
+        elif data.startswith("c:"):
+            return await self._callback_control_playback(message)
 
-        try:
-            data = int(data)
-        except ValueError:
-            await message.answer("wrong callback")
+    async def _callback_control_playback(self, message: CallbackQuery):
+        data = message.data
+        _, control_id, action = data.split(":")
+        control_id = int(control_id)
+        playing_video = self._playing_videos[control_id]
+        msg_id = playing_video.video_message.id
 
-        try:
-            device_function = next(
-                f_v
-                for f in self._functions.values()
-                for f_k, f_v in f.items()
-                if f_k == data
-            )
-        except StopIteration:
-            await message.answer("stream closed")
-            return
+        device = self._get_user_device(playing_video.user_id)
+        if not device:
+            return await message.answer("Device not selected")
 
-        if not await device_function.is_enabled(self._config):
-            await message.answer("function not enabled")
-            return
+        async with async_timeout.timeout(self._config.device_request_timeout) as timeout_context:
+            if action == "START":
+                token = secret_token()
+                local_token = self._http.add_remote_token(msg_id, token)
+                self._devices[local_token] = device
+                uri = build_uri(self._config, msg_id, token)
 
-        with async_timeout.timeout(self._config.device_request_timeout) as timeout_context:
-            await device_function.handle()
+                try:
+                    filename = pyrogram_filename(playing_video.video_message)
+                except TypeError:
+                    filename = "None"
 
+                # noinspection PyBroadException
+                try:
+                    await device.stop()
+                    await device.play(uri, str(filename), local_token)
+                except Exception as ex:
+                    traceback.print_exc()
+
+                    await message.answer(
+                        "Error while communicate with the device:\n\n"
+                        f"<code>{html.escape(str(ex))}</code>"
+                    )
+                buttons = [[InlineKeyboardButton("STOP", f"c:{control_id}:STOP")],
+                           [InlineKeyboardButton("PAUSE", f"c:{control_id}:PAUSE")]]
+                await playing_video.control_message.edit_text(
+                    f"Playing <code>{msg_id}</code> on device <code>{html.escape(device.get_device_name())}</code>",
+                    reply_markup=InlineKeyboardMarkup(buttons)
+                )
+            elif action == "STOP":
+                await device.stop()
+                buttons = [[InlineKeyboardButton("START", f"c:{control_id}:START")]]
+                await playing_video.control_message.edit_text(
+                    f"Controller for file <code>{msg_id}</code>",
+                    reply_markup=InlineKeyboardMarkup(buttons)
+
+                )
+            elif action == "PAUSE":
+                for function in device.get_player_functions():
+                    if await function.is_enabled(self._config) and (await function.get_name()).upper() == "PAUSE":
+                        await function.handle()
+                        buttons = [[InlineKeyboardButton("STOP", f"c:{control_id}:STOP")],
+                                   [InlineKeyboardButton("PLAY", f"c:{control_id}:PLAY")]]
+                        await playing_video.control_message.edit_text(
+                            f"Paused <code>{msg_id}</code> on device <code>{html.escape(device.get_device_name())}</code>",
+                            reply_markup=InlineKeyboardMarkup(buttons)
+                        )
+                else:
+                    await message.answer("Action not supported by the device")
+            elif action == "PLAY":
+                for function in device.get_player_functions():
+                    if await function.is_enabled(self._config) and (await function.get_name()).upper() == "PLAY":
+                        await function.handle()
+                        buttons = [[InlineKeyboardButton("STOP", f"c:{control_id}:STOP")],
+                                   [InlineKeyboardButton("PAUSE", f"c:{control_id}:PAUSE")]]
+                        await playing_video.control_message.edit_text(
+                            f"Playing <code>{msg_id}</code> on device <code>{html.escape(device.get_device_name())}</code>",
+                            reply_markup=InlineKeyboardMarkup(buttons)
+                        )
+                else:
+                    await message.answer("Action not supported by the device")
         if timeout_context.expired:
-            await message.answer("request timeout")
-        else:
-            await message.answer("done")
+            await message.answer("Timeout while communicate with the device")
 
-    async def _select_device(self, message: CallbackQuery):
+    async def _callback_select_device(self, message: CallbackQuery):
         data = message.data
         device_name = data.split(":", 1)[1]
         try:
@@ -214,7 +217,7 @@ class Bot:
         self._user_data[message.from_user.id] = UserData(device)
         await message.answer("Selected " + device_name)
 
-    async def _device_selector(self, client: Client, message: Message):
+    async def _device_selector(self, _: Client, message: Message):
         self._all_devices = []
 
         for finder in self._finders.get_finders(self._config):
@@ -229,66 +232,14 @@ class Bot:
 
     async def _new_document(self, _: Client, message: Message, user_message=None):
         user_id = (user_message or message).from_user.id
-        user_data = self._user_data.get(user_id)
-        reply = message.reply
-        if not user_data or not user_data.selected_device:
-            await reply("No device selected")
-            return
+        control_id = secret_token()
+        buttons = [[InlineKeyboardButton("START", f"c:{control_id}:START")]]
 
-        device = user_data.selected_device
-        msg_id = message.id
-        async with async_timeout.timeout(self._config.device_request_timeout) as timeout_context:
-            token = secret_token()
-            local_token = self._http.add_remote_token(msg_id, token)
-            uri = build_uri(self._config, msg_id, token)
-
-            try:
-                filename = pyrogram_filename(message)
-            except TypeError:
-                filename = "None"
-
-            # noinspection PyBroadException
-            try:
-                await device.stop()
-                await device.play(uri, str(filename), local_token)
-
-            except Exception as ex:
-                traceback.print_exc()
-
-                await reply(
-                    "Error while communicate with the device:\n\n"
-                    f"<code>{html.escape(str(ex))}</code>"
-                )
-
-            else:
-                self._devices[local_token] = device
-                physical_functions = device.get_player_functions()
-                functions = self._functions[local_token] = {}
-
-                if physical_functions:
-                    buttons = []
-
-                    for function in physical_functions:
-                        function_id = secret_token()
-                        function_name = await function.get_name()
-                        button = InlineKeyboardButton(function_name, str(function_id))
-                        functions[function_id] = function
-                        buttons.append([button])
-
-                    await message.reply(
-                        f"Device <code>{html.escape(device.get_device_name())}</code>\n"
-                        f"controller for file <code>{msg_id}</code>",
-                        reply_markup=InlineKeyboardMarkup(buttons)
-                    )
-
-                    stub_message = await reply("stub")
-                    await stub_message.delete()
-
-                else:
-                    await reply(f"Playing file <code>{msg_id}</code>")
-
-        if timeout_context.expired:
-            await reply("Timeout while communicate with the device")
+        control_message = await message.reply(
+            f"Controller for file <code>{message.id}</code>",
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
+        self._playing_videos[control_id] = PlayingVideo(user_id, message, control_message)
 
     async def _download_url(self, client, message, url, reply_message):
         try:
