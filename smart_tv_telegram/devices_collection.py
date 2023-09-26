@@ -1,3 +1,4 @@
+import asyncio
 import typing
 
 import async_timeout
@@ -24,11 +25,14 @@ class DeviceFinderCollection:
     def get_finders(self, config: Config) -> typing.List[DeviceFinder]:
         return [finder for finder in self._finders if finder.is_enabled(config)]
 
-    async def find_all_devices(self, config):
+    async def find_all_devices(self, config: Config):
         devices = []
         for finder in self.get_finders(config):
-            with async_timeout.timeout(config.device_request_timeout + 1):
-                devices.extend(await finder.find(config))
+            try:
+                with async_timeout.timeout(config.device_request_timeout + 1):
+                    devices.extend(await finder.find(config))
+            except asyncio.CancelledError:
+                pass
         return devices
 
 

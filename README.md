@@ -14,18 +14,17 @@ A Telegram Bot to stream contents (Telegram videos, Youtube videos and more) to 
 ## Known issues
 
 - Chromecast (1st, 2nd and 3rd Gen.) [only supports H.264 and VP8 video codecs](https://developers.google.com/cast/docs/media#video_codecs)
-- Most LG TVs with WebOS have an incorrect UPnP implementation, throw it in the trash and buy a new TV
+- Most LG TVs with WebOS have an incorrect UPnP implementation
 
-## How-to setup
+## How-to setup (Release from pypi)
 Make sure you have an updated version of python, only the latest version will be supported
-
-(currently it also works on Python 3.8)
 
 - Install Poetry if it's not installed yet
 - Clone the repository
 - Install python dependencies
 - Copy config.ini.example to config.ini
 - Edit config.ini
+- Start from python entrypoint
 
 ```bash
 # install poetry
@@ -42,8 +41,8 @@ poetry run smart_tv_telegram -c config.ini -v 1
 ## How-to setup (Docker)
 - Copy config.ini.example to config.ini
 - Edit config.ini
-- Build Docker
-- Start Docker
+- Build Docker image
+- Start Docker container
 
 ```bash
 cp config.ini.example config.ini
