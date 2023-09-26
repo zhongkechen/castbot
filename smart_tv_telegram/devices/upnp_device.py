@@ -308,9 +308,13 @@ class UpnpDeviceFinder(DeviceFinder):
         devices = []
         requester = AiohttpRequester()
         factory = UpnpFactory(requester)
+        found_locations = set()
 
         async def on_response(data: typing.Mapping[str, typing.Any]) -> None:
-            devices.append(await factory.async_create_device(data.get("LOCATION")))
+            location = data.get("LOCATION")
+            if location not in found_locations:
+                devices.append(await factory.async_create_device(location))
+                found_locations.add(location)
 
         await async_search(search_target=_AVTRANSPORT_SCHEMA,
                            timeout=config.upnp_scan_timeout,
