@@ -14,7 +14,7 @@ from pyrogram.handlers import MessageHandler, CallbackQueryHandler
 from pyrogram.types import ReplyKeyboardRemove, Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from . import Config, Mtproto, Http, OnStreamClosed, DeviceFinderCollection
-from .devices import Device, DevicePlayerFunction
+from .devices import Device
 from .tools import build_uri, pyrogram_filename, secret_token
 
 __all__ = [
@@ -24,35 +24,6 @@ __all__ = [
 _REMOVE_KEYBOARD = ReplyKeyboardRemove()
 _CANCEL_BUTTON = "^Cancel"
 _URL_PATTERN = r'(http|https):\/\/([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:\/~+#-]*[\w@?^=%&\/~+#-])'
-
-
-class OnStreamClosedHandler(OnStreamClosed):
-    _mtproto: Mtproto
-    _functions: typing.Dict[int, typing.Any]
-    _devices: typing.Dict[int, Device]
-
-    def __init__(self,
-                 mtproto: Mtproto,
-                 functions: typing.Dict[int, typing.Any],
-                 devices: typing.Dict[int, Device]):
-        self._mtproto = mtproto
-        self._functions = functions
-        self._devices = devices
-
-    async def handle(self, remains: float, chat_id: int, message_id: int, local_token: int):
-        if local_token in self._functions:
-            del self._functions[local_token]
-
-        on_close: typing.Optional[typing.Callable[[int], typing.Coroutine]] = None
-
-        if local_token in self._devices:
-            on_close = self._devices[local_token].on_close
-            del self._devices[local_token]
-
-        await self._mtproto.reply_message(message_id, chat_id, f"download closed, {remains:0.2f}% remains")
-
-        if on_close is not None:
-            await on_close(local_token)
 
 
 class UserData:
@@ -82,10 +53,13 @@ class PlayingVideo:
         self.playing_device: typing.Optional[Device] = playing_device
         self.control_message = None
 
-    async def send_stopped_control_message(self):
+    async def send_stopped_control_message(self, remaining=None):
         buttons = [[InlineKeyboardButton("DEVICE", f"c:{self.control_id}:DEVICE")],
                    [InlineKeyboardButton("START", f"c:{self.control_id}:START")]]
-        text = f"Controller for file <code>{self.video_message.id}</code> on device {html.escape(self.playing_device.get_device_name()) if self.playing_device else 'NONE'}"
+        if not remaining:
+            text = f"Controller for file <code>{self.video_message.id}</code> on device {html.escape(self.playing_device.get_device_name()) if self.playing_device else 'NONE'}"
+        else:
+            text = f"Streaming for file <code>{self.video_message.id}</code> closed, {remaining:0.2f}% remains"
         await self.create_or_update_control_message(text, buttons)
 
     async def send_playing_control_message(self):
@@ -146,13 +120,29 @@ class PlayingVideo:
         await self.control_message.edit_text("Select a device", reply_markup=InlineKeyboardMarkup(buttons))
 
 
+class OnStreamClosedHandler(OnStreamClosed):
+    def __init__(self, playing_videos: typing.Dict[int, PlayingVideo]):
+        self._playing_videos = playing_videos
+
+    async def handle(self, remains: float, chat_id: int, message_id: int, local_token: int):
+        on_close: typing.Optional[typing.Callable[[int], typing.Coroutine]] = None
+
+        if local_token in self._playing_videos:
+            playing_video = self._playing_videos[local_token]
+            if playing_video.playing_device:
+                on_close = playing_video.playing_device.on_close
+            await playing_video.send_stopped_control_message(remaining=remains)
+            del self._playing_videos[local_token]
+
+        if on_close is not None:
+            await on_close(local_token)
+
+
 class Bot:
     _config: Config
     _mtproto: Mtproto
     _http: Http
     _finders: DeviceFinderCollection
-    _functions: typing.Dict[int, typing.Dict[int, typing.Union[DevicePlayerFunction, typing.Callable]]]
-    _devices: typing.Dict[int, Device]
     _user_data: typing.Dict[int, UserData]
     _playing_videos: typing.Dict[int, PlayingVideo]
 
@@ -161,17 +151,16 @@ class Bot:
         self._mtproto = mtproto
         self._http = http
         self._finders = finders
-        self._functions = {}
-        self._devices = {}
         self._all_devices = []
         self._user_data = {}
         self._playing_videos = {}
+        self._playing_videos_by_local_token = {}
 
         self._http.set_on_stream_closed_handler(self.get_on_stream_closed())
         self.prepare()
 
     def get_on_stream_closed(self) -> OnStreamClosed:
-        return OnStreamClosedHandler(self._mtproto, self._functions, self._devices)
+        return OnStreamClosedHandler(self._playing_videos_by_local_token)
 
     def prepare(self):
         admin_filter = filters.chat(self._config.admins) & filters.private
@@ -225,7 +214,7 @@ class Bot:
             if action == "START":
                 token = secret_token()
                 local_token = self._http.add_remote_token(msg_id, token)
-                self._devices[local_token] = playing_video.playing_device
+                self._playing_videos_by_local_token[local_token] = playing_video
                 uri = build_uri(self._config, msg_id, token)
                 try:
                     await playing_video.start(uri, local_token)
