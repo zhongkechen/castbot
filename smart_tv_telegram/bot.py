@@ -182,13 +182,6 @@ class Bot:
 
         return user_data.selected_device
 
-    async def _refresh_all_devices(self):
-        self._all_devices = []
-
-        for finder in self._finders.get_finders(self._config):
-            with async_timeout.timeout(self._config.device_request_timeout + 1):
-                self._all_devices.extend(await finder.find(self._config))
-
     async def _callback_handler(self, _: Client, message: CallbackQuery):
         data = message.data
         _, control_id, payload = data.split(":")
@@ -207,7 +200,7 @@ class Bot:
 
         if action in ["DEVICE", "REFRESH"]:
             if not self._all_devices or action == "REFRESH":
-                await self._refresh_all_devices()
+                self._all_devices = await self._finders.find_all_devices(self._config)
             return await playing_video.select_device(self._all_devices)
 
         async with async_timeout.timeout(self._config.device_request_timeout) as timeout_context:
