@@ -63,11 +63,11 @@ class UserData:
 
 
 class PlayingVideo:
-    def __init__(self, user_id: int, video_message: Message, control_message: Message):
+    def __init__(self, user_id: int, video_message: Message, control_message: Message, playing_device: Device):
         self.user_id = user_id
         self.video_message = video_message
         self.control_message = control_message
-        self.playing_device: typing.Optional[Device] = None
+        self.playing_device: typing.Optional[Device] = playing_device
 
 
 class Bot:
@@ -99,8 +99,6 @@ class Bot:
 
     def prepare(self):
         admin_filter = filters.chat(self._config.admins) & filters.private
-        self._mtproto.register(MessageHandler(self._device_selector, filters.command("select_device") & admin_filter))
-
         self._mtproto.register(MessageHandler(self._new_document, filters.document & admin_filter))
         self._mtproto.register(MessageHandler(self._new_document, filters.video & admin_filter))
         self._mtproto.register(MessageHandler(self._new_document, filters.audio & admin_filter))
@@ -119,29 +117,42 @@ class Bot:
 
         return user_data.selected_device
 
+    async def _refresh_all_devices(self):
+        self._all_devices = []
+
+        for finder in self._finders.get_finders(self._config):
+            with async_timeout.timeout(self._config.device_request_timeout + 1):
+                self._all_devices.extend(await finder.find(self._config))
+
     async def _callback_handler(self, _: Client, message: CallbackQuery):
         data = message.data
+        _, control_id, payload = data.split(":")
+        control_id = int(control_id)
 
         if data.startswith("s:"):
-            return await self._callback_select_device(message)
+            return await self._callback_select_device(control_id, payload, message)
         elif data.startswith("c:"):
-            return await self._callback_control_playback(message)
+            return await self._callback_control_playback(control_id, payload, message)
 
-    async def _callback_control_playback(self, message: CallbackQuery):
-        data = message.data
-        _, control_id, action = data.split(":")
-        control_id = int(control_id)
+    async def _callback_control_playback(self, control_id, action, message: CallbackQuery):
         playing_video = self._playing_videos[control_id]
         msg_id = playing_video.video_message.id
 
+        if action == "DEVICE":
+            await self._refresh_all_devices()
+            buttons = [[InlineKeyboardButton(repr(device), f"s:{control_id}:{repr(device)}")] for device in
+                       self._all_devices]
+            await playing_video.control_message.edit_text("Select a device",
+                                                          reply_markup=InlineKeyboardMarkup(buttons))
+            return
+
         async with async_timeout.timeout(self._config.device_request_timeout) as timeout_context:
             if action == "START":
-                device = self._get_user_device(playing_video.user_id)
-                if not device:
+                if not playing_video.playing_device:
                     return await message.answer("Device not selected")
                 token = secret_token()
                 local_token = self._http.add_remote_token(msg_id, token)
-                self._devices[local_token] = device
+                device = self._devices[local_token] = playing_video.playing_device
                 uri = build_uri(self._config, msg_id, token)
 
                 try:
@@ -166,15 +177,14 @@ class Bot:
                     f"Playing <code>{msg_id}</code> on device <code>{html.escape(device.get_device_name())}</code>",
                     reply_markup=InlineKeyboardMarkup(buttons)
                 )
-                playing_video.playing_device = device
             elif action == "STOP":
                 await playing_video.playing_device.stop()
                 playing_video.playing_device = None
-                buttons = [[InlineKeyboardButton("START", f"c:{control_id}:START")]]
+                buttons = [[InlineKeyboardButton("DEVICE", f"c:{control_id}:DEVICE")],
+                           [InlineKeyboardButton("START", f"c:{control_id}:START")]]
                 await playing_video.control_message.edit_text(
                     f"Controller for file <code>{msg_id}</code>",
                     reply_markup=InlineKeyboardMarkup(buttons)
-
                 )
             elif action == "PAUSE":
                 for function in playing_video.playing_device.get_player_functions():
@@ -203,9 +213,8 @@ class Bot:
         if timeout_context.expired:
             await message.answer("Timeout while communicate with the device")
 
-    async def _callback_select_device(self, message: CallbackQuery):
-        data = message.data
-        device_name = data.split(":", 1)[1]
+    async def _callback_select_device(self, control_id, device_name, message: CallbackQuery):
+        playing_video = self._playing_videos[control_id]
         try:
             device = next(
                 device
@@ -216,32 +225,26 @@ class Bot:
             await message.answer("Wrong device")
             return
 
+        playing_video.playing_device = device
         self._user_data[message.from_user.id] = UserData(device)
-        await message.answer("Selected " + device_name)
-
-    async def _device_selector(self, _: Client, message: Message):
-        self._all_devices = []
-
-        for finder in self._finders.get_finders(self._config):
-            with async_timeout.timeout(self._config.device_request_timeout + 1):
-                self._all_devices.extend(await finder.find(self._config))
-
-        if self._all_devices:
-            buttons = [[InlineKeyboardButton(repr(device), "s:" + repr(device))] for device in self._all_devices]
-            await message.reply("Select a device", reply_markup=InlineKeyboardMarkup(buttons), reply_to_message_id=message.id)
-        else:
-            await message.reply("Supported devices not found in the network")
+        buttons = [[InlineKeyboardButton("DEVICE", f"c:{control_id}:DEVICE")],
+                   [InlineKeyboardButton("START", f"c:{control_id}:START")]]
+        await playing_video.control_message.edit_text(
+            f"Controller for file <code>{message.id}</code>",
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
 
     async def _new_document(self, _: Client, message: Message, user_message=None):
         user_id = (user_message or message).from_user.id
         control_id = secret_token()
-        buttons = [[InlineKeyboardButton("START", f"c:{control_id}:START")]]
+        buttons = [[InlineKeyboardButton("DEVICE", f"c:{control_id}:DEVICE")],
+                   [InlineKeyboardButton("START", f"c:{control_id}:START")]]
 
         control_message = await message.reply(
             f"Controller for file <code>{message.id}</code>",
             reply_markup=InlineKeyboardMarkup(buttons)
         )
-        self._playing_videos[control_id] = PlayingVideo(user_id, message, control_message)
+        self._playing_videos[control_id] = PlayingVideo(user_id, message, control_message, self._get_user_device(user_id))
 
     async def _download_url(self, client, message, url, reply_message):
         try:
