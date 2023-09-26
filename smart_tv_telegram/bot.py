@@ -55,7 +55,7 @@ class PlayingVideo:
 
     async def send_stopped_control_message(self, remaining=None):
         buttons = [[InlineKeyboardButton("DEVICE", f"c:{self.control_id}:DEVICE")],
-                   [InlineKeyboardButton("START", f"c:{self.control_id}:START")]]
+                   [InlineKeyboardButton("PLAY", f"c:{self.control_id}:PLAY")]]
         if not remaining:
             text = f"Controller for file <code>{self.video_message.id}</code> on device {html.escape(self.playing_device.get_device_name()) if self.playing_device else 'NONE'}"
         else:
@@ -70,7 +70,7 @@ class PlayingVideo:
 
     async def send_paused_control_message(self):
         buttons = [[InlineKeyboardButton("STOP", f"c:{self.control_id}:STOP")],
-                   [InlineKeyboardButton("PLAY", f"c:{self.control_id}:PLAY")]]
+                   [InlineKeyboardButton("RESUME", f"c:{self.control_id}:RESUME")]]
         text = f"Paused <code>{self.video_message.id}</code> on device <code>{html.escape(self.playing_device.get_device_name())}</code>"
         await self.create_or_update_control_message(text, buttons)
 
@@ -80,7 +80,7 @@ class PlayingVideo:
         else:
             self.control_message = await self.video_message.reply(text, reply_markup=InlineKeyboardMarkup(buttons))
 
-    async def start(self, uri, local_token):
+    async def play(self, uri, local_token):
         if not self.playing_device:
             raise NoDeviceException
 
@@ -106,9 +106,9 @@ class PlayingVideo:
         else:
             raise ActionNotSupportedException
 
-    async def play(self):
+    async def resume(self):
         for function in self.playing_device.get_player_functions():
-            if (await function.get_name()).upper() == "PLAY":
+            if (await function.get_name()).upper() == "RESUME":
                 await function.handle()
                 return await self.send_playing_control_message()
         else:
@@ -211,13 +211,13 @@ class Bot:
             return await playing_video.select_device(self._all_devices)
 
         async with async_timeout.timeout(self._config.device_request_timeout) as timeout_context:
-            if action == "START":
+            if action == "PLAY":
                 token = secret_token()
                 local_token = self._http.add_remote_token(msg_id, token)
                 self._playing_videos_by_local_token[local_token] = playing_video
                 uri = build_uri(self._config, msg_id, token)
                 try:
-                    await playing_video.start(uri, local_token)
+                    await playing_video.play(uri, local_token)
                 except NoDeviceException:
                     await message.answer("Device not selected")
                 except Exception as ex:
@@ -237,9 +237,9 @@ class Bot:
                 except ActionNotSupportedException:
                     await message.answer("Action not supported by the device")
 
-            elif action == "PLAY":
+            elif action == "RESUME":
                 try:
-                    await playing_video.play()
+                    await playing_video.resume()
                 except ActionNotSupportedException:
                     await message.answer("Action not supported by the device")
         if timeout_context.expired:
@@ -286,6 +286,9 @@ class Bot:
                 await reply_message.edit_text(f"Download completed. Uploading video (size={file_stats.st_size})")
                 reader = open(output_filename, mode='rb')
                 video_message = await message.reply_video(reader, reply_to_message_id=message.id)
+                await reply_message.edit_text(f"Upload completed.")
+                await asyncio.sleep(5)
+                await reply_message.delete()
 
             await self._new_document(client, video_message, user_message=message)
         except Exception as e:
