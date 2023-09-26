@@ -62,12 +62,88 @@ class UserData:
         self.selected_device = selected_device
 
 
+class NoDeviceException(Exception):
+    pass
+
+
+class ActionNotSupportedException(Exception):
+    pass
+
+
+class UnknownCallbackException(Exception):
+    pass
+
+
 class PlayingVideo:
-    def __init__(self, user_id: int, video_message: Message, control_message: Message, playing_device: Device):
+    def __init__(self, control_id: int, user_id: int, video_message: Message, playing_device: Device):
+        self.control_id = control_id
         self.user_id = user_id
         self.video_message = video_message
-        self.control_message = control_message
         self.playing_device: typing.Optional[Device] = playing_device
+        self.control_message = None
+
+    async def send_stopped_control_message(self):
+        buttons = [[InlineKeyboardButton("DEVICE", f"c:{self.control_id}:DEVICE")],
+                   [InlineKeyboardButton("START", f"c:{self.control_id}:START")]]
+        text = f"Controller for file <code>{self.video_message.id}</code> on device {html.escape(self.playing_device.get_device_name()) if self.playing_device else 'NONE'}"
+        await self.create_or_update_control_message(text, buttons)
+
+    async def send_playing_control_message(self):
+        buttons = [[InlineKeyboardButton("STOP", f"c:{self.control_id}:STOP")],
+                   [InlineKeyboardButton("PAUSE", f"c:{self.control_id}:PAUSE")]]
+        text = f"Playing <code>{self.video_message.id}</code> on device <code>{html.escape(self.playing_device.get_device_name())}</code>"
+        await self.create_or_update_control_message(text, buttons)
+
+    async def send_paused_control_message(self):
+        buttons = [[InlineKeyboardButton("STOP", f"c:{self.control_id}:STOP")],
+                   [InlineKeyboardButton("PLAY", f"c:{self.control_id}:PLAY")]]
+        text = f"Paused <code>{self.video_message.id}</code> on device <code>{html.escape(self.playing_device.get_device_name())}</code>"
+        await self.create_or_update_control_message(text, buttons)
+
+    async def create_or_update_control_message(self, text, buttons):
+        if self.control_message:
+            await self.control_message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
+        else:
+            self.control_message = await self.video_message.reply(text, reply_markup=InlineKeyboardMarkup(buttons))
+
+    async def start(self, uri, local_token):
+        if not self.playing_device:
+            raise NoDeviceException
+
+        try:
+            filename = pyrogram_filename(self.video_message)
+        except TypeError:
+            filename = "None"
+
+        # noinspection PyBroadException
+        await self.playing_device.stop()
+        await self.playing_device.play(uri, str(filename), local_token)
+        await self.send_playing_control_message()
+
+    async def stop(self):
+        await self.playing_device.stop()
+        await self.send_stopped_control_message()
+
+    async def pause(self):
+        for function in self.playing_device.get_player_functions():
+            if (await function.get_name()).upper() == "PAUSE":
+                await function.handle()
+                return await self.send_paused_control_message()
+        else:
+            raise ActionNotSupportedException
+
+    async def play(self):
+        for function in self.playing_device.get_player_functions():
+            if (await function.get_name()).upper() == "PLAY":
+                await function.handle()
+                return await self.send_playing_control_message()
+        else:
+            raise ActionNotSupportedException
+
+    async def select_device(self, devices):
+        buttons = [[InlineKeyboardButton(repr(device), f"s:{self.control_id}:{repr(device)}")] for device in devices]
+        buttons.append([InlineKeyboardButton("REFRESH", f"c:{self.control_id}:REFRESH")])
+        await self.control_message.edit_text("Select a device", reply_markup=InlineKeyboardMarkup(buttons))
 
 
 class Bot:
@@ -133,37 +209,28 @@ class Bot:
             return await self._callback_select_device(control_id, payload, message)
         elif data.startswith("c:"):
             return await self._callback_control_playback(control_id, payload, message)
+        else:
+            raise UnknownCallbackException
 
     async def _callback_control_playback(self, control_id, action, message: CallbackQuery):
         playing_video = self._playing_videos[control_id]
         msg_id = playing_video.video_message.id
 
-        if action == "DEVICE":
-            await self._refresh_all_devices()
-            buttons = [[InlineKeyboardButton(repr(device), f"s:{control_id}:{repr(device)}")] for device in
-                       self._all_devices]
-            await playing_video.control_message.edit_text("Select a device",
-                                                          reply_markup=InlineKeyboardMarkup(buttons))
-            return
+        if action in ["DEVICE", "REFRESH"]:
+            if not self._all_devices or action == "REFRESH":
+                await self._refresh_all_devices()
+            return await playing_video.select_device(self._all_devices)
 
         async with async_timeout.timeout(self._config.device_request_timeout) as timeout_context:
             if action == "START":
-                if not playing_video.playing_device:
-                    return await message.answer("Device not selected")
                 token = secret_token()
                 local_token = self._http.add_remote_token(msg_id, token)
-                device = self._devices[local_token] = playing_video.playing_device
+                self._devices[local_token] = playing_video.playing_device
                 uri = build_uri(self._config, msg_id, token)
-
                 try:
-                    filename = pyrogram_filename(playing_video.video_message)
-                except TypeError:
-                    filename = "None"
-
-                # noinspection PyBroadException
-                try:
-                    await device.stop()
-                    await device.play(uri, str(filename), local_token)
+                    await playing_video.start(uri, local_token)
+                except NoDeviceException:
+                    await message.answer("Device not selected")
                 except Exception as ex:
                     traceback.print_exc()
 
@@ -171,44 +238,20 @@ class Bot:
                         "Error while communicate with the device:\n\n"
                         f"<code>{html.escape(str(ex))}</code>"
                     )
-                buttons = [[InlineKeyboardButton("STOP", f"c:{control_id}:STOP")],
-                           [InlineKeyboardButton("PAUSE", f"c:{control_id}:PAUSE")]]
-                await playing_video.control_message.edit_text(
-                    f"Playing <code>{msg_id}</code> on device <code>{html.escape(device.get_device_name())}</code>",
-                    reply_markup=InlineKeyboardMarkup(buttons)
-                )
+
             elif action == "STOP":
-                await playing_video.playing_device.stop()
-                playing_video.playing_device = None
-                buttons = [[InlineKeyboardButton("DEVICE", f"c:{control_id}:DEVICE")],
-                           [InlineKeyboardButton("START", f"c:{control_id}:START")]]
-                await playing_video.control_message.edit_text(
-                    f"Controller for file <code>{msg_id}</code>",
-                    reply_markup=InlineKeyboardMarkup(buttons)
-                )
+                await playing_video.stop()
+
             elif action == "PAUSE":
-                for function in playing_video.playing_device.get_player_functions():
-                    if await function.is_enabled(self._config) and (await function.get_name()).upper() == "PAUSE":
-                        await function.handle()
-                        buttons = [[InlineKeyboardButton("STOP", f"c:{control_id}:STOP")],
-                                   [InlineKeyboardButton("PLAY", f"c:{control_id}:PLAY")]]
-                        await playing_video.control_message.edit_text(
-                            f"Paused <code>{msg_id}</code> on device <code>{html.escape(playing_video.playing_device.get_device_name())}</code>",
-                            reply_markup=InlineKeyboardMarkup(buttons)
-                        )
-                else:
+                try:
+                    await playing_video.pause()
+                except ActionNotSupportedException:
                     await message.answer("Action not supported by the device")
+
             elif action == "PLAY":
-                for function in playing_video.playing_device.get_player_functions():
-                    if await function.is_enabled(self._config) and (await function.get_name()).upper() == "PLAY":
-                        await function.handle()
-                        buttons = [[InlineKeyboardButton("STOP", f"c:{control_id}:STOP")],
-                                   [InlineKeyboardButton("PAUSE", f"c:{control_id}:PAUSE")]]
-                        await playing_video.control_message.edit_text(
-                            f"Playing <code>{msg_id}</code> on device <code>{html.escape(playing_video.playing_device.get_device_name())}</code>",
-                            reply_markup=InlineKeyboardMarkup(buttons)
-                        )
-                else:
+                try:
+                    await playing_video.play()
+                except ActionNotSupportedException:
                     await message.answer("Action not supported by the device")
         if timeout_context.expired:
             await message.answer("Timeout while communicate with the device")
@@ -227,24 +270,15 @@ class Bot:
 
         playing_video.playing_device = device
         self._user_data[message.from_user.id] = UserData(device)
-        buttons = [[InlineKeyboardButton("DEVICE", f"c:{control_id}:DEVICE")],
-                   [InlineKeyboardButton("START", f"c:{control_id}:START")]]
-        await playing_video.control_message.edit_text(
-            f"Controller for file <code>{message.id}</code>",
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
+        await playing_video.send_stopped_control_message()
 
     async def _new_document(self, _: Client, message: Message, user_message=None):
         user_id = (user_message or message).from_user.id
+        device = self._get_user_device(user_id)
         control_id = secret_token()
-        buttons = [[InlineKeyboardButton("DEVICE", f"c:{control_id}:DEVICE")],
-                   [InlineKeyboardButton("START", f"c:{control_id}:START")]]
 
-        control_message = await message.reply(
-            f"Controller for file <code>{message.id}</code>",
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
-        self._playing_videos[control_id] = PlayingVideo(user_id, message, control_message, self._get_user_device(user_id))
+        self._playing_videos[control_id] = PlayingVideo(control_id, user_id, message, device)
+        await self._playing_videos[control_id].send_stopped_control_message()
 
     async def _download_url(self, client, message, url, reply_message):
         try:
