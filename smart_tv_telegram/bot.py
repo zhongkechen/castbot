@@ -67,6 +67,7 @@ class PlayingVideo:
         self.user_id = user_id
         self.video_message = video_message
         self.control_message = control_message
+        self.playing_device: typing.Optional[Device] = None
 
 
 class Bot:
@@ -133,12 +134,11 @@ class Bot:
         playing_video = self._playing_videos[control_id]
         msg_id = playing_video.video_message.id
 
-        device = self._get_user_device(playing_video.user_id)
-        if not device:
-            return await message.answer("Device not selected")
-
         async with async_timeout.timeout(self._config.device_request_timeout) as timeout_context:
             if action == "START":
+                device = self._get_user_device(playing_video.user_id)
+                if not device:
+                    return await message.answer("Device not selected")
                 token = secret_token()
                 local_token = self._http.add_remote_token(msg_id, token)
                 self._devices[local_token] = device
@@ -166,8 +166,10 @@ class Bot:
                     f"Playing <code>{msg_id}</code> on device <code>{html.escape(device.get_device_name())}</code>",
                     reply_markup=InlineKeyboardMarkup(buttons)
                 )
+                playing_video.playing_device = device
             elif action == "STOP":
-                await device.stop()
+                await playing_video.playing_device.stop()
+                playing_video.playing_device = None
                 buttons = [[InlineKeyboardButton("START", f"c:{control_id}:START")]]
                 await playing_video.control_message.edit_text(
                     f"Controller for file <code>{msg_id}</code>",
@@ -175,25 +177,25 @@ class Bot:
 
                 )
             elif action == "PAUSE":
-                for function in device.get_player_functions():
+                for function in playing_video.playing_device.get_player_functions():
                     if await function.is_enabled(self._config) and (await function.get_name()).upper() == "PAUSE":
                         await function.handle()
                         buttons = [[InlineKeyboardButton("STOP", f"c:{control_id}:STOP")],
                                    [InlineKeyboardButton("PLAY", f"c:{control_id}:PLAY")]]
                         await playing_video.control_message.edit_text(
-                            f"Paused <code>{msg_id}</code> on device <code>{html.escape(device.get_device_name())}</code>",
+                            f"Paused <code>{msg_id}</code> on device <code>{html.escape(playing_video.playing_device.get_device_name())}</code>",
                             reply_markup=InlineKeyboardMarkup(buttons)
                         )
                 else:
                     await message.answer("Action not supported by the device")
             elif action == "PLAY":
-                for function in device.get_player_functions():
+                for function in playing_video.playing_device.get_player_functions():
                     if await function.is_enabled(self._config) and (await function.get_name()).upper() == "PLAY":
                         await function.handle()
                         buttons = [[InlineKeyboardButton("STOP", f"c:{control_id}:STOP")],
                                    [InlineKeyboardButton("PAUSE", f"c:{control_id}:PAUSE")]]
                         await playing_video.control_message.edit_text(
-                            f"Playing <code>{msg_id}</code> on device <code>{html.escape(device.get_device_name())}</code>",
+                            f"Playing <code>{msg_id}</code> on device <code>{html.escape(playing_video.playing_device.get_device_name())}</code>",
                             reply_markup=InlineKeyboardMarkup(buttons)
                         )
                 else:
