@@ -10,7 +10,6 @@ from aiohttp.web_request import Request
 from aiohttp.web_response import Response, StreamResponse
 from pyrogram.raw.types import MessageMediaDocument, Document, DocumentAttributeFilename
 from pyrogram.types import Message
-from pyrogram.utils import get_peer_id
 
 from . import Config, Mtproto, DeviceFinderCollection
 from .tools import serialize_token
@@ -25,7 +24,7 @@ _RANGE_REGEX = re.compile(r"bytes=([0-9]+)-([0-9]+)?")
 
 class OnStreamClosed(abc.ABC):
     @abc.abstractmethod
-    async def handle_closed(self, remains: float, chat_id: int, message_id: int, local_token: int):
+    async def handle_closed(self, remains: float, local_token: int):
         raise NotImplementedError
 
 
@@ -180,13 +179,13 @@ class Http:
         self._write_access_control_headers(result)
         return result
 
-    def _feed_timeout(self, message_id: int, chat_id: int, local_token: int, size: int):
+    def _feed_timeout(self, local_token: int, size: int):
         debounce = self._stream_debounce.setdefault(
             local_token,
             AsyncDebounce(self._timeout_handler, self._config.request_gone_timeout)
         )
 
-        debounce.update_args(message_id, chat_id, local_token, size)
+        debounce.update_args(local_token, size)
 
     def _feed_downloaded_blocks(self, block_id: int, local_token: int):
         downloaded_blocks = self._downloaded_blocks.setdefault(local_token, set())
@@ -199,7 +198,7 @@ class Http:
     def _get_stream_transports(self, local_token: int) -> typing.Set[asyncio.Transport]:
         return self._stream_transports[local_token] if local_token in self._stream_transports else set()
 
-    async def _timeout_handler(self, message_id: int, chat_id: int, local_token: int, size: int):
+    async def _timeout_handler(self, local_token: int, size: int):
         _debounce: typing.Optional[AsyncDebounce] = None  # avoid garbage collector
 
         if all(t.is_closing() for t in self._get_stream_transports(local_token)):
@@ -225,7 +224,7 @@ class Http:
             on_stream_closed = self._on_stream_closed
 
             if isinstance(on_stream_closed, OnStreamClosed):
-                await on_stream_closed.handle_closed(remain_blocks_perceptual, chat_id, message_id, local_token)
+                await on_stream_closed.handle_closed(remain_blocks_perceptual, local_token)
 
         if local_token in self._stream_debounce:
             self._stream_debounce[local_token].reschedule()
@@ -306,7 +305,7 @@ class Http:
         await stream.prepare(request)
 
         while offset < max_size:
-            self._feed_timeout(message_id, get_peer_id(message.peer_id), local_token, size)
+            self._feed_timeout(local_token, size)
             block = await self._mtproto.get_block(message, offset, self._config.block_size)
             new_offset = offset + len(block)
 
