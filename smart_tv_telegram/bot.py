@@ -210,7 +210,7 @@ class Bot(OnStreamClosed):
             except Exception as ex:
                 traceback.print_exc()
 
-                await message.answer(f"Error while communicate with the device:\n\n<code>{html.escape(str(ex))}</code>")
+                await message.answer(f"Unknown exception: {ex.__class__.__name__}")
         else:
             raise UnknownCallbackException
 
