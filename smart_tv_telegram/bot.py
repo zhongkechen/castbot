@@ -15,7 +15,7 @@ from pyrogram.types import ReplyKeyboardRemove, Message, CallbackQuery, InlineKe
 
 from . import Config, Mtproto, Http, OnStreamClosed, DeviceFinderCollection
 from .devices import Device
-from .tools import build_uri, pyrogram_filename, secret_token
+from .tools import secret_token
 
 __all__ = [
     "Bot"
@@ -120,47 +120,35 @@ class PlayingVideo:
         await self.control_message.edit_text("Select a device", reply_markup=InlineKeyboardMarkup(buttons))
 
 
-class OnStreamClosedHandler(OnStreamClosed):
-    def __init__(self, playing_videos: typing.Dict[int, PlayingVideo]):
-        self._playing_videos = playing_videos
-
-    async def handle(self, remains: float, chat_id: int, message_id: int, local_token: int):
-        on_close: typing.Optional[typing.Callable[[int], typing.Coroutine]] = None
-
-        if local_token in self._playing_videos:
-            playing_video = self._playing_videos[local_token]
-            if playing_video.playing_device:
-                on_close = playing_video.playing_device.on_close
-            await playing_video.send_stopped_control_message(remaining=remains)
-            del self._playing_videos[local_token]
-
-        if on_close is not None:
-            await on_close(local_token)
+def pyrogram_filename(message: Message) -> str:
+    _NAMED_MEDIA_TYPES = ("document", "video", "audio", "video_note", "animation")
+    try:
+        return next(
+            getattr(message, t).file_name
+            for t in _NAMED_MEDIA_TYPES
+            if getattr(message, t) is not None
+        )
+    except StopIteration as error:
+        raise TypeError() from error
 
 
-class Bot:
-    _config: Config
-    _mtproto: Mtproto
-    _http: Http
-    _finders: DeviceFinderCollection
-    _user_data: typing.Dict[int, UserData]
-    _playing_videos: typing.Dict[int, PlayingVideo]
+def build_uri(config: Config, msg_id: int, token: int) -> str:
+    return f"http://{config.listen_host}:{config.listen_port}/stream/{msg_id}/{token}"
 
+
+class Bot(OnStreamClosed):
     def __init__(self, mtproto: Mtproto, config: Config, http: Http, finders: DeviceFinderCollection):
         self._config = config
         self._mtproto = mtproto
         self._http = http
         self._finders = finders
         self._all_devices = []
-        self._user_data = {}
-        self._playing_videos = {}
-        self._playing_videos_by_local_token = {}
+        self._user_data: typing.Dict[int, UserData] = {}
+        self._playing_videos: typing.Dict[int, PlayingVideo] = {}
+        self._playing_videos_by_local_token: typing.Dict[int, PlayingVideo] = {}
 
-        self._http.set_on_stream_closed_handler(self.get_on_stream_closed())
+        self._http.set_on_stream_closed_handler(self)
         self.prepare()
-
-    def get_on_stream_closed(self) -> OnStreamClosed:
-        return OnStreamClosedHandler(self._playing_videos_by_local_token)
 
     def prepare(self):
         admin_filter = filters.chat(self._config.admins) & filters.private
@@ -297,3 +285,11 @@ class Bot:
         url = result.group(0)
         reply_message = await message.reply(f"Downloading url {url}", reply_to_message_id=message.id, disable_web_page_preview=True)
         asyncio.create_task(self._download_url(_, message, url, reply_message))
+
+    async def handle_closed(self, remains: float, chat_id: int, message_id: int, local_token: int):
+        if local_token in self._playing_videos:
+            playing_video = self._playing_videos[local_token]
+            device = playing_video.playing_device
+            await playing_video.send_stopped_control_message(remaining=remains)
+            del self._playing_videos[local_token]
+            await device.on_close(local_token)

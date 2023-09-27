@@ -18,7 +18,6 @@ from async_upnp_client.search import async_search
 
 from . import Device, DeviceFinder, RoutersDefType, DevicePlayerFunction, RequestHandler
 from .. import Config
-from ..tools import ascii_only, base_url
 
 __all__ = [
     "UpnpDevice",
@@ -46,6 +45,14 @@ _DLL_METADATA = """
 """
 
 _STATUS_TAG = "{urn:schemas-upnp-org:metadata-1-0/AVT/}TransportStatus"
+
+
+def ascii_only(haystack: str) -> str:
+    return "".join(c for c in haystack if ord(c) < 128)
+
+
+def base_url(config: Config) -> str:
+    return f"http://{config.listen_host}:{config.listen_port}"
 
 
 async def _upnp_safe_stop(service: UpnpService):

@@ -1,28 +1,111 @@
 import abc
 import asyncio
 import os.path
+import re
 import typing
 from urllib.parse import quote
 
 from aiohttp import web
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response, StreamResponse
-from pyrogram.raw.types import MessageMediaDocument, Document
+from pyrogram.raw.types import MessageMediaDocument, Document, DocumentAttributeFilename
+from pyrogram.types import Message
 from pyrogram.utils import get_peer_id
 
 from . import Config, Mtproto, DeviceFinderCollection
-from .tools import parse_http_range, mtproto_filename, serialize_token, AsyncDebounce
+from .tools import serialize_token
 
 __all__ = [
     "Http",
     "OnStreamClosed"
 ]
 
+_RANGE_REGEX = re.compile(r"bytes=([0-9]+)-([0-9]+)?")
+
 
 class OnStreamClosed(abc.ABC):
     @abc.abstractmethod
-    async def handle(self, remains: float, chat_id: int, message_id: int, local_token: int):
+    async def handle_closed(self, remains: float, chat_id: int, message_id: int, local_token: int):
         raise NotImplementedError
+
+
+def mtproto_filename(message: Message) -> str:
+    if not (
+            isinstance(message.media, MessageMediaDocument) and
+            isinstance(message.media.document, Document)
+    ):
+        raise TypeError()
+
+    try:
+        return next(
+            attr.file_name
+            for attr in message.media.document.attributes
+            if isinstance(attr, DocumentAttributeFilename)
+        )
+    except StopIteration as error:
+        raise TypeError() from error
+
+
+async def _debounce_wrap(
+        function: typing.Callable[..., typing.Coroutine],
+        args: typing.Tuple[typing.Any],
+        timeout: int,
+):
+    await asyncio.sleep(timeout)
+    await function(*args)
+
+
+class AsyncDebounce:
+    def __init__(self, function: typing.Callable[..., typing.Coroutine], timeout: int):
+        self._function = function
+        self._timeout = timeout
+        self._task: typing.Optional[asyncio.Task] = None
+        self._args: typing.Optional[typing.Tuple[typing.Any]] = None
+
+    def _run(self) -> bool:
+        if self._args is None:
+            return False
+
+        self._task = asyncio.get_event_loop().create_task(_debounce_wrap(self._function, self._args, self._timeout))
+        return True
+
+    def update_args(self, *args) -> bool:
+        if self._task is not None and self._task.done():
+            return False
+
+        if self._task is not None:
+            self._task.cancel()
+
+        self._args = args
+        return self._run()
+
+    def reschedule(self):
+        return self._run()
+
+
+def parse_http_range(http_range: str, block_size: int) -> typing.Tuple[int, int, typing.Optional[int]]:
+    matches = _RANGE_REGEX.search(http_range)
+
+    if matches is None:
+        raise ValueError()
+
+    offset = matches.group(1)
+
+    if not offset.isdigit():
+        raise ValueError()
+
+    max_size = matches.group(2)
+
+    if max_size and max_size.isdigit():
+        max_size = int(max_size)
+    else:
+        max_size = None
+
+    offset = int(offset)
+    safe_offset = (offset // block_size) * block_size
+    data_to_skip = offset - safe_offset
+
+    return safe_offset, data_to_skip, max_size
 
 
 class Http:
@@ -142,7 +225,7 @@ class Http:
             on_stream_closed = self._on_stream_closed
 
             if isinstance(on_stream_closed, OnStreamClosed):
-                await on_stream_closed.handle(remain_blocks_perceptual, chat_id, message_id, local_token)
+                await on_stream_closed.handle_closed(remain_blocks_perceptual, chat_id, message_id, local_token)
 
         if local_token in self._stream_debounce:
             self._stream_debounce[local_token].reschedule()

@@ -1,15 +1,24 @@
+import asyncio
+import concurrent.futures
+import functools
 import typing
 
 import catt.api
 
 from . import Device, DeviceFinder, RoutersDefType, DevicePlayerFunction
 from .. import Config
-from ..tools import run_method_in_executor
 
 __all__ = [
     "ChromecastDevice",
     "ChromecastDeviceFinder"
 ]
+
+_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
+
+async def run_method_in_executor(func, *args, **kwargs):
+    partial_function = functools.partial(func, *args, **kwargs)
+    return await asyncio.get_event_loop().run_in_executor(_EXECUTOR, partial_function)
 
 
 class ChromecastPlayFunction(DevicePlayerFunction):
