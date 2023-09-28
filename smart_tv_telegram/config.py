@@ -13,6 +13,7 @@ class Config:
     token: str
     session_name: str
     file_fake_fw_wait: float
+    downloader: str = "youtube-dl"
 
     device_request_timeout: int
 
@@ -52,6 +53,7 @@ class Config:
         self.listen_port = int(config["http"]["listen_port"])
         self.listen_host = str(config["http"]["listen_host"])
 
+        self.downloader = str(config["bot"]["downloader"])
         self.request_gone_timeout = int(config["bot"]["request_gone_timeout"])
         self.device_request_timeout = int(config["discovery"]["device_request_timeout"])
 

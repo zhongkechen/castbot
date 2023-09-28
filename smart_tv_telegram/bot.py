@@ -43,6 +43,9 @@ class UnknownCallbackException(Exception):
     pass
 
 
+class ConfigError(Exception):
+    pass
+
 class PlayingVideo:
     def __init__(self,
                  config: Config,
@@ -281,14 +284,16 @@ class Bot(OnStreamClosed):
                                             disable_web_page_preview=True)
         try:
             with tempfile.TemporaryDirectory() as tmpdir:
-                if 'youtube' in url or 'youtu.be' in url:
+                if self._config.downloader == "youtube-dl":
                     output_filename = os.path.join(tmpdir, "video1.mp4")
                     process = await asyncio.create_subprocess_shell(
                         f"youtube-dl -v -f mp4 -o {output_filename} '{url}'")
-                else:
+                elif self._config.downloader == "you-get":
                     output_filename = os.path.join(tmpdir, "video1")
                     process = await asyncio.create_subprocess_shell(f"you-get -O {output_filename} '{url}'")
                     output_filename = output_filename + ".mp4"
+                else:
+                    raise ConfigError
 
                 await process.communicate()
 
