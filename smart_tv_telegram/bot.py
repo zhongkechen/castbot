@@ -11,7 +11,7 @@ import async_timeout
 from pyrogram import Client, filters
 from pyrogram.filters import create
 from pyrogram.handlers import MessageHandler, CallbackQueryHandler
-from pyrogram.types import ReplyKeyboardRemove, Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from . import Config, Mtproto, Http, OnStreamClosed, DeviceFinderCollection
 from .devices import Device
@@ -21,8 +21,6 @@ __all__ = [
     "Bot"
 ]
 
-_REMOVE_KEYBOARD = ReplyKeyboardRemove()
-_CANCEL_BUTTON = "^Cancel"
 _URL_PATTERN = r'(http|https):\/\/([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:\/~+#-]*[\w@?^=%&\/~+#-])'
 
 
@@ -46,13 +44,21 @@ class UnknownCallbackException(Exception):
 
 
 class PlayingVideo:
-    def __init__(self, config: Config, token: int, user_id: int, video_message: Message, playing_device: typing.Optional[Device], control_message=None):
+    def __init__(self,
+                 config: Config,
+                 token: int,
+                 user_id: int,
+                 video_message: typing.Optional[Message] = None,
+                 playing_device: typing.Optional[Device] = None,
+                 control_message: typing.Optional[Message] = None,
+                 link_message: typing.Optional[Message] = None):
         self._config = config
         self.token = token
         self.user_id = user_id
         self.video_message = video_message
         self.playing_device: typing.Optional[Device] = playing_device
         self.control_message = control_message
+        self.link_message = link_message
 
     def _build_uri(self, msg_id: int, token: int) -> str:
         return f"http://{self._config.listen_host}:{self._config.listen_port}/stream/{msg_id}/{token}"
@@ -184,6 +190,23 @@ class Bot(OnStreamClosed):
 
         return user_data.selected_device
 
+    async def _reconstruct_playing_video(self, message_id, token, callback: CallbackQuery):
+        # re-construct PlayVideo when the bot is restarted
+        user_id = callback.from_user.id
+        control_message = callback.message
+        video_message: Message = await self._mtproto.get_message(message_id)
+        if control_message.reply_to_message_id != message_id:
+            link_message = await self._mtproto.get_message(control_message.reply_to_message_id)
+        else:
+            link_message = None
+
+        device = self._get_user_device(user_id)
+        return PlayingVideo(self._config, token, user_id,
+                            video_message=video_message,
+                            playing_device=device,
+                            control_message=control_message,
+                            link_message=link_message)
+
     async def _callback_handler(self, _: Client, message: CallbackQuery):
         data = message.data
         _, message_id, token, payload = data.split(":")
@@ -191,11 +214,8 @@ class Bot(OnStreamClosed):
         token = int(token)
         local_token = serialize_token(message_id, token)
         if local_token not in self._playing_videos:
-            # re-construct PlayVideo when the bot is restarted
-            user_id = message.from_user.id
-            video_message = await self._mtproto.get_message(message_id)
-            device = self._get_user_device(user_id)
-            self._playing_videos[local_token] = PlayingVideo(self._config, token, user_id, video_message, device, message.message)
+            self._playing_videos[local_token] = await self._reconstruct_playing_video(message_id, token, message)
+
         playing_video = self._playing_videos[local_token]
 
         if data.startswith("s:"):
@@ -242,21 +262,29 @@ class Bot(OnStreamClosed):
         await playing_video.send_stopped_control_message()
         self._user_data[playing_video.user_id] = UserData(device)  # Update the user's default device
 
-    async def _new_document(self, _: Client, message: Message, user_message=None):
-        user_id = (user_message or message).from_user.id
+    async def _new_document(self, _: Client, video_message: Message, link_message=None, control_message=None):
+        user_id = (link_message or video_message).from_user.id
         device = self._get_user_device(user_id)
         token = secret_token()
-        local_token = serialize_token(message.id, token)
+        local_token = serialize_token(video_message.id, token)
 
-        self._playing_videos[local_token] = PlayingVideo(self._config, token, user_id, message, device)
+        self._playing_videos[local_token] = PlayingVideo(self._config, token, user_id,
+                                                         video_message=video_message,
+                                                         playing_device=device,
+                                                         control_message=control_message,
+                                                         link_message=link_message)
         await self._playing_videos[local_token].send_stopped_control_message()
 
-    async def _download_url(self, client, message, url, reply_message):
+    async def _download_url(self, client, message, url):
+        reply_message = await message.reply(f"Downloading url {url}",
+                                            reply_to_message_id=message.id,
+                                            disable_web_page_preview=True)
         try:
             with tempfile.TemporaryDirectory() as tmpdir:
                 if 'youtube' in url or 'youtu.be' in url:
                     output_filename = os.path.join(tmpdir, "video1.mp4")
-                    process = await asyncio.create_subprocess_shell(f"youtube-dl -v -f mp4 -o {output_filename} '{url}'")
+                    process = await asyncio.create_subprocess_shell(
+                        f"youtube-dl -v -f mp4 -o {output_filename} '{url}'")
                 else:
                     output_filename = os.path.join(tmpdir, "video1")
                     process = await asyncio.create_subprocess_shell(f"you-get -O {output_filename} '{url}'")
@@ -269,10 +297,8 @@ class Bot(OnStreamClosed):
                 reader = open(output_filename, mode='rb')
                 video_message = await message.reply_video(reader, reply_to_message_id=message.id)
                 await reply_message.edit_text(f"Upload completed.")
-                await asyncio.sleep(5)
-                await reply_message.delete()
 
-            await self._new_document(client, video_message, user_message=message)
+            await self._new_document(client, video_message, link_message=message, control_message=reply_message)
         except Exception as e:
             await reply_message.edit_text(f"Exception thrown {e} when downloading {url}: {traceback.format_exc()}")
 
@@ -281,11 +307,10 @@ class Bot(OnStreamClosed):
 
         result = re.search(_URL_PATTERN, text)
         if not result:
-            return await message.reply("Not a supported link", reply_markup=_REMOVE_KEYBOARD)
+            return await message.reply("Not a supported link")
 
         url = result.group(0)
-        reply_message = await message.reply(f"Downloading url {url}", reply_to_message_id=message.id, disable_web_page_preview=True)
-        asyncio.create_task(self._download_url(_, message, url, reply_message))
+        asyncio.create_task(self._download_url(_, message, url))
 
     async def handle_closed(self, remains: float, local_token: int):
         if local_token in self._playing_videos:
