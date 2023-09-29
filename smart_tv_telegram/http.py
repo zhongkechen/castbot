@@ -11,7 +11,7 @@ from aiohttp.web_response import Response, StreamResponse
 from pyrogram.raw.types import MessageMediaDocument, Document, DocumentAttributeFilename
 from pyrogram.types import Message
 
-from . import Config, Mtproto, DeviceFinderCollection
+from . import Mtproto, DeviceFinderCollection
 from .tools import serialize_token
 
 __all__ = [
@@ -108,9 +108,12 @@ def parse_http_range(http_range: str, block_size: int) -> typing.Tuple[int, int,
 
 
 class Http:
-    def __init__(self, mtproto: Mtproto, config: Config, finders: DeviceFinderCollection):
+    def __init__(self, mtproto: Mtproto, config, finders: DeviceFinderCollection):
+        self._listen_port = int(config["listen_port"])
+        self._listen_host = str(config["listen_host"])
+        self._request_gone_timeout = int(config["request_gone_timeout"])
+        self._block_size = int(config["block_size"])
         self._mtproto = mtproto
-        self._config = config
         self._finders = finders
 
         self._tokens: typing.Set[int] = set()
@@ -118,6 +121,9 @@ class Http:
         self._stream_debounce: typing.Dict[int, AsyncDebounce] = {}
         self._stream_transports: typing.Dict[int, typing.Set[asyncio.Transport]] = {}
         self._on_stream_closed: typing.Optional[OnStreamClosed] = None
+
+    def build_streaming_uri(self, msg_id: int, token: int) -> str:
+        return f"http://{self._listen_host}:{self._listen_port}/stream/{msg_id}/{token}"
 
     def set_on_stream_closed_handler(self, handler: OnStreamClosed):
         self._on_stream_closed = handler
@@ -134,7 +140,7 @@ class Http:
             app.router.add_route(method, path, handle)
 
         # noinspection PyProtectedMember
-        await web._run_app(app, host=self._config.listen_host, port=self._config.listen_port)
+        await web._run_app(app, host=self._listen_host, port=self._listen_port)
 
     def add_remote_token(self, message_id: int, partial_remote_token: int) -> int:
         local_token = serialize_token(message_id, partial_remote_token)
@@ -179,7 +185,7 @@ class Http:
     def _feed_timeout(self, local_token: int, size: int):
         debounce = self._stream_debounce.setdefault(
             local_token,
-            AsyncDebounce(self._timeout_handler, self._config.request_gone_timeout)
+            AsyncDebounce(self._timeout_handler, self._request_gone_timeout)
         )
 
         debounce.update_args(local_token, size)
@@ -199,7 +205,7 @@ class Http:
         _debounce: typing.Optional[AsyncDebounce] = None  # avoid garbage collector
 
         if all(t.is_closing() for t in self._get_stream_transports(local_token)):
-            blocks = (size // self._config.block_size) + 1
+            blocks = (size // self._block_size) + 1
 
             if local_token in self._tokens:
                 self._tokens.remove(local_token)
@@ -258,11 +264,11 @@ class Http:
 
         else:
             try:
-                offset, data_to_skip, max_size = parse_http_range(range_header, self._config.block_size)
+                offset, data_to_skip, max_size = parse_http_range(range_header, self._block_size)
             except ValueError:
                 return Response(status=400)
 
-        if data_to_skip > self._config.block_size:
+        if data_to_skip > self._block_size:
             return Response(status=500)
 
         try:
@@ -303,7 +309,7 @@ class Http:
 
         while offset < max_size:
             self._feed_timeout(local_token, size)
-            block = await self._mtproto.get_block(message, offset, self._config.block_size)
+            block = await self._mtproto.get_block(message, offset, self._block_size)
             new_offset = offset + len(block)
 
             if data_to_skip:

@@ -14,7 +14,7 @@ from pyrogram.filters import create
 from pyrogram.handlers import MessageHandler, CallbackQueryHandler
 from pyrogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
-from . import Config, Mtproto, Http, OnStreamClosed, DeviceFinderCollection
+from . import Mtproto, Http, OnStreamClosed, DeviceFinderCollection
 from .device import Device
 from .tools import secret_token, serialize_token
 
@@ -50,23 +50,20 @@ class ConfigError(Exception):
 
 class PlayingVideo:
     def __init__(self,
-                 config: Config,
+                 http: Http,
                  token: int,
                  user_id: int,
                  video_message: typing.Optional[Message] = None,
                  playing_device: typing.Optional[Device] = None,
                  control_message: typing.Optional[Message] = None,
                  link_message: typing.Optional[Message] = None):
-        self._config = config
+        self._http = http
         self.token = token
         self.user_id = user_id
         self.video_message = video_message
         self.playing_device: typing.Optional[Device] = playing_device
         self.control_message = control_message
         self.link_message = link_message
-
-    def _build_uri(self, msg_id: int, token: int) -> str:
-        return f"http://{self._config.listen_host}:{self._config.listen_port}/stream/{msg_id}/{token}"
 
     def _gen_device_str(self):
         return f"on device <code>{html.escape(self.playing_device.get_device_name()) if self.playing_device else 'NONE'}</code>"
@@ -111,7 +108,7 @@ class PlayingVideo:
         if not self.playing_device:
             raise NoDeviceException
 
-        uri = self._build_uri(self.video_message.id, self.token)
+        uri = self._http.build_streaming_uri(self.video_message.id, self.token)
         local_token = serialize_token(self.video_message.id, self.token)
 
         try:
@@ -165,8 +162,15 @@ def pyrogram_filename(message: Message) -> str:
 
 
 class Bot(OnStreamClosed):
-    def __init__(self, mtproto: Mtproto, config: Config, http: Http, finders: DeviceFinderCollection):
-        self._config = config
+    def __init__(self, mtproto: Mtproto, config, http: Http, finders: DeviceFinderCollection):
+        self._downloader = str(config["downloader"])
+        assert self._downloader in ["youtube-dl", "you-get"]
+        self._admins = config["admins"]
+        if not isinstance(self._admins, list):
+            raise ValueError("admins should be a list")
+        if not all(isinstance(x, int) for x in self._admins):
+            raise ValueError("admins list should contain only integers")
+
         self._mtproto = mtproto
         self._http = http
         self._finders = finders
@@ -177,7 +181,7 @@ class Bot(OnStreamClosed):
         self.prepare()
 
     def prepare(self):
-        admin_filter = filters.chat(self._config.admins) & filters.private
+        admin_filter = filters.chat(self._admins) & filters.private
         self._mtproto.register(MessageHandler(self._new_document, filters.document & admin_filter))
         self._mtproto.register(MessageHandler(self._new_document, filters.video & admin_filter))
         self._mtproto.register(MessageHandler(self._new_document, filters.audio & admin_filter))
@@ -186,7 +190,7 @@ class Bot(OnStreamClosed):
         self._mtproto.register(MessageHandler(self._new_document, filters.video_note & admin_filter))
         self._mtproto.register(MessageHandler(self._new_link, filters.text & admin_filter))
 
-        admin_filter_inline = create(lambda _, __, m: m.from_user.id in self._config.admins)
+        admin_filter_inline = create(lambda _, __, m: m.from_user.id in self._admins)
         self._mtproto.register(CallbackQueryHandler(self._callback_handler, admin_filter_inline))
 
     def _get_user_device(self, user_id):
@@ -207,7 +211,9 @@ class Bot(OnStreamClosed):
             link_message = None
 
         device = self._get_user_device(user_id)
-        return PlayingVideo(self._config, token, user_id,
+        return PlayingVideo(self._http,
+                            token,
+                            user_id,
                             video_message=video_message,
                             playing_device=device,
                             control_message=control_message,
@@ -274,7 +280,7 @@ class Bot(OnStreamClosed):
         token = secret_token()
         local_token = serialize_token(video_message.id, token)
 
-        self._playing_videos[local_token] = PlayingVideo(self._config, token, user_id,
+        self._playing_videos[local_token] = PlayingVideo(self._http, token, user_id,
                                                          video_message=video_message,
                                                          playing_device=device,
                                                          control_message=control_message,
@@ -287,11 +293,11 @@ class Bot(OnStreamClosed):
                                             disable_web_page_preview=True)
         try:
             with tempfile.TemporaryDirectory() as tmpdir:
-                if self._config.downloader == "youtube-dl":
+                if self._downloader == "youtube-dl":
                     output_filename = os.path.join(tmpdir, "video1.mp4")
                     process = await asyncio.create_subprocess_shell(
                         f"youtube-dl -v -f mp4 -o {output_filename} '{url}'")
-                elif self._config.downloader == "you-get":
+                elif self._downloader == "you-get":
                     output_filename = os.path.join(tmpdir, "video1")
                     process = await asyncio.create_subprocess_shell(f"you-get -O {output_filename} '{url}'")
                     output_filename = output_filename + ".mp4"

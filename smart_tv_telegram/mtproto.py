@@ -6,20 +6,18 @@ import pickle
 import typing
 
 import pyrogram
-
+import pyrogram.session
 from async_lru import alru_cache
 from pyrogram.enums import ParseMode
+from pyrogram.errors import FloodWait
 from pyrogram.handlers.handler import Handler
 from pyrogram.raw.functions.auth import ExportAuthorization, ImportAuthorization
 from pyrogram.raw.functions.help import GetConfig
 from pyrogram.raw.functions.messages import GetMessages
 from pyrogram.raw.functions.upload import GetFile
 from pyrogram.raw.types import InputMessageID, Message, InputDocumentFileLocation
-from pyrogram.errors import FloodWait
-import pyrogram.session
 from pyrogram.raw.types.upload import File
 
-from . import Config
 
 __all__ = [
     "Mtproto"
@@ -27,13 +25,20 @@ __all__ = [
 
 
 class Mtproto:
-    _config: Config
     _client: pyrogram.Client
 
-    def __init__(self, config: Config):
-        self._config = config
-        self._client = pyrogram.Client(config.session_name, config.api_id, config.api_hash,
-                                       bot_token=config.token, sleep_threshold=0, workdir=os.getcwd())
+    def __init__(self, config):
+        self._session_name = str(config["session_name"])
+        self._api_id = int(config["api_id"])
+        self._api_hash = str(config["api_hash"])
+        self._token = str(config["token"])
+        self._file_fake_fw_wait = float(config["file_fake_fw_wait"])
+        self._client = pyrogram.Client(self._session_name,
+                                       self._api_id,
+                                       self._api_hash,
+                                       bot_token=self._token,
+                                       sleep_threshold=0,
+                                       workdir=os.getcwd())
 
     def register(self, handler: Handler):
         self._client.add_handler(handler)
@@ -89,7 +94,7 @@ class Mtproto:
             try:
                 result = await session.invoke(request, sleep_threshold=0)
             except FloodWait:  # file floodwait is fake
-                await asyncio.sleep(self._config.file_fake_fw_wait)
+                await asyncio.sleep(self._file_fake_fw_wait)
 
         return result.bytes
 
@@ -98,7 +103,7 @@ class Mtproto:
 
         config = await self._client.invoke(GetConfig())
         dc_ids = [x.id for x in config.dc_options]
-        keys_path = self._config.session_name + ".keys"
+        keys_path = self._session_name + ".keys"
 
         if os.path.exists(keys_path):
             keys = pickle.load(open(keys_path, "rb"))

@@ -8,20 +8,19 @@ try:
 except ImportError:
     import toml as tomllib
 import traceback
-import typing
 import urllib.request
 
-from smart_tv_telegram import Http, Mtproto, Config, Bot, DeviceFinderCollection
+from smart_tv_telegram import Http, Mtproto, Bot, DeviceFinderCollection
 
 
-def open_config(parser: argparse.ArgumentParser, arg: str) -> typing.Optional[Config]:
+def open_config(parser: argparse.ArgumentParser, arg: str):
     if not os.path.exists(arg):
         parser.error(f"The file `{arg}` does not exist")
     elif not os.path.isfile(arg):
         parser.error(f"`{arg}` is not a file")
 
     try:
-        return Config(arg)
+        return tomllib.load(open(arg, "rb"))
     except tomllib.TOMLDecodeError as err:
         parser.error(f"config file parsing error:\n{str(err)}")
     except ValueError as err:
@@ -32,25 +31,25 @@ def open_config(parser: argparse.ArgumentParser, arg: str) -> typing.Optional[Co
     return None
 
 
-async def async_main(config: Config):
-    device_finder = DeviceFinderCollection(config.devices)
-    mtproto = Mtproto(config)
-    http = Http(mtproto, config, device_finder)
-    bot = Bot(mtproto, config, http, device_finder)
+async def async_main(config):
+    device_finder = DeviceFinderCollection(config["devices"])
+    mtproto = Mtproto(config["mtproto"])
+    http = Http(mtproto, config["http"], device_finder)
+    bot = Bot(mtproto, config["bot"], http, device_finder)
 
     await mtproto.start()
     await http.start()
 
 
-def main(config: Config):
+def main(config):
     loop = asyncio.get_event_loop()
     loop.run_until_complete(async_main(config))
 
 
-def health_check(config: Config):
+def health_check(config):
     # noinspection PyBroadException
     try:
-        urllib.request.urlopen(f"http://{config.listen_host}:{config.listen_port}/healthcheck")
+        urllib.request.urlopen(f"http://{config['http']['listen_host']}:{config['http']['listen_port']}/healthcheck")
     except Exception:
         traceback.print_exc()
         return 1
