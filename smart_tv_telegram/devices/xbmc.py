@@ -8,12 +8,9 @@ import uuid
 
 import aiohttp
 
-from . import Device, DeviceFinder, DevicePlayerFunction
+from ..device import Device, DeviceFinder, DevicePlayerFunction
 
-__all__ = [
-    "XbmcDevice",
-    "XbmcDeviceFinder"
-]
+__all__ = ["Finder"]
 
 _LOGGER = logging.getLogger(__name__)
 _ARGTYPE = typing.Union[typing.AnyStr, int, bool]
@@ -151,3 +148,6 @@ class XbmcDeviceFinder(DeviceFinder):
 
     async def find(self) -> typing.List[Device]:
         return [XbmcDevice(XbmcDeviceParams(params)) for params in self._devices]
+
+
+Finder = XbmcDeviceFinder

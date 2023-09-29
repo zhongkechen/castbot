@@ -4,9 +4,7 @@ except ImportError:
     import toml as tomllib
 
 
-__all__ = [
-    "Config"
-]
+__all__ = ["Config"]
 
 
 class Config:

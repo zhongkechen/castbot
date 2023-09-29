@@ -5,13 +5,10 @@ import typing
 
 import catt.api
 
-from . import Device, DeviceFinder, RoutersDefType, DevicePlayerFunction
-from .. import Config
+from ..device import Device, DeviceFinder, DevicePlayerFunction
 
-__all__ = [
-    "ChromecastDevice",
-    "ChromecastDeviceFinder"
-]
+__all__ = ["Finder"]
+
 
 _EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
@@ -87,3 +84,6 @@ class ChromecastDeviceFinder(DeviceFinder):
             cached_devices.append(self._devices_cache.setdefault(found_device.ip_addr, found_device))
 
         return [ChromecastDevice(device) for device in cached_devices]
+
+
+Finder = ChromecastDeviceFinder

@@ -4,14 +4,10 @@ import typing
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 
-from smart_tv_telegram import Config
-from smart_tv_telegram.devices import DeviceFinder, RoutersDefType, Device, RequestHandler, DevicePlayerFunction
+from ..device import DeviceFinder, RoutersDefType, Device, RequestHandler, DevicePlayerFunction
 from smart_tv_telegram.tools import secret_token
 
-__all__ = [
-    "WebDeviceFinder",
-    "WebDevice"
-]
+__all__ = ["Finder"]
 
 
 class WebDevice(Device):
@@ -81,7 +77,6 @@ class WebDeviceApiRequestRegisterDevice(RequestHandler):
 
 
 class WebDeviceApiRequestPoll(RequestHandler):
-    _config: Config
     _devices: typing.Dict[int, WebDevice]
 
     def __init__(self, devices: typing.Dict[int, WebDevice]):
@@ -141,3 +136,6 @@ class WebDeviceFinder(DeviceFinder):
             WebDeviceApiRequestRegisterDevice(self._password, self._devices),
             WebDeviceApiRequestPoll(self._devices)
         ]
+
+
+Finder = WebDeviceFinder

@@ -14,7 +14,7 @@ from pyrogram.handlers import MessageHandler, CallbackQueryHandler
 from pyrogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from . import Config, Mtproto, Http, OnStreamClosed, DeviceFinderCollection
-from .devices import Device
+from .device import Device
 from .tools import secret_token, serialize_token
 
 __all__ = [

@@ -17,12 +17,9 @@ from async_upnp_client.event_handler import UpnpEventHandler
 from async_upnp_client.exceptions import UpnpError
 from async_upnp_client.search import async_search
 
-from . import Device, DeviceFinder, RoutersDefType, DevicePlayerFunction, RequestHandler
+from ..device import Device, DeviceFinder, RoutersDefType, DevicePlayerFunction, RequestHandler
 
-__all__ = [
-    "UpnpDevice",
-    "UpnpDeviceFinder"
-]
+__all__ = ["Finder"]
 
 _AVTRANSPORT_SCHEMA = "urn:schemas-upnp-org:service:AVTransport:1"
 
@@ -324,3 +321,6 @@ class UpnpDeviceFinder(DeviceFinder):
         if not self._enabled:
             return []
         return [self._notify_handler]
+
+
+Finder = UpnpDeviceFinder

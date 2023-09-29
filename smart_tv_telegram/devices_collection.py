@@ -1,10 +1,12 @@
 import asyncio
 import typing
+import importlib
+import pkgutil
+import os.path
 
 import async_timeout
 
-from smart_tv_telegram.devices import DeviceFinder, UpnpDeviceFinder, ChromecastDeviceFinder, VlcDeviceFinder, \
-    WebDeviceFinder, XbmcDeviceFinder, Device
+from . import device, devices
 
 __all__ = [
     "DeviceFinderCollection"
@@ -14,13 +16,11 @@ __all__ = [
 class DeviceFinderCollection:
     def __init__(self, config):
         self.device_request_timeout = int(config.get("device_request_timeout", 10))
-        self._finders: typing.List[DeviceFinder] = [
-            UpnpDeviceFinder(config["upnp"]),
-            ChromecastDeviceFinder(config["chromecast"]),
-            VlcDeviceFinder(config["vlc"]),
-            WebDeviceFinder(config["web"]),
-            XbmcDeviceFinder(config["xbmc"])]
-        self._devices: typing.List[Device] = []
+        self._finders: typing.List[device.DeviceFinder] = [
+            importlib.import_module("." + name, ".devices").Finder(config[name])
+            for _, name, _ in pkgutil.iter_modules([os.path.dirname(devices.__file__)]) if name != "device"]
+
+        self._devices: typing.List[device.Device] = []
 
     def get_all_routers(self):
         for finder in self._finders:

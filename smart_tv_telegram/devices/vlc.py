@@ -3,12 +3,9 @@ import io
 import logging
 import typing
 
-from . import DeviceFinder, Device, DevicePlayerFunction
+from ..device import DeviceFinder, Device, DevicePlayerFunction
 
-__all__ = [
-    "VlcDevice",
-    "VlcDeviceFinder"
-]
+__all__ = ["Finder"]
 
 _LOGGER = logging.getLogger(__name__)
 _ENCODING = "utf8"
@@ -103,3 +100,6 @@ class VlcDeviceFinder(DeviceFinder):
 
     async def find(self) -> typing.List[Device]:
         return [VlcDevice(VlcDeviceParams(params)) for params in self._devices]
+
+
+Finder = VlcDeviceFinder
