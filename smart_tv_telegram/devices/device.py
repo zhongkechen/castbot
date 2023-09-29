@@ -4,8 +4,6 @@ import typing
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 
-from .. import Config
-
 
 class RequestHandler(abc.ABC):
     @abc.abstractmethod
@@ -41,10 +39,6 @@ class DevicePlayerFunction(abc.ABC):
     async def handle(self):
         raise NotImplementedError
 
-    @abc.abstractmethod
-    async def is_enabled(self, config: Config):
-        raise NotImplementedError
-
 
 class Device(abc.ABC):
     @abc.abstractmethod
@@ -73,14 +67,8 @@ class Device(abc.ABC):
 
 class DeviceFinder(abc.ABC):
     @abc.abstractmethod
-    async def find(self, config: Config) -> typing.List[Device]:
+    async def find(self) -> typing.List[Device]:
         raise NotImplementedError
 
-    @staticmethod
-    @abc.abstractmethod
-    def is_enabled(config: Config) -> bool:
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    async def get_routers(self, config: Config) -> RoutersDefType:
-        raise NotImplementedError
+    def get_routers(self) -> RoutersDefType:
+        return []

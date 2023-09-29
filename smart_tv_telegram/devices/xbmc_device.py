@@ -8,8 +8,7 @@ import uuid
 
 import aiohttp
 
-from . import Device, DeviceFinder, RoutersDefType, DevicePlayerFunction
-from .. import Config
+from . import Device, DeviceFinder, DevicePlayerFunction
 
 __all__ = [
     "XbmcDevice",
@@ -142,15 +141,13 @@ class XbmcDevice(Device):
 
 
 class XbmcDeviceFinder(DeviceFinder):
-    async def find(self, config: Config) -> typing.List[Device]:
-        return [
-            XbmcDevice(XbmcDeviceParams(params))
-            for params in config.xbmc_devices
-        ]
+    def __init__(self, config):
+        self._devices = config
+        if not isinstance(self._devices, list):
+            raise ValueError("xbmc_devices should be a list")
 
-    @staticmethod
-    def is_enabled(config: Config) -> bool:
-        return config.xbmc_enabled
+        if not all(isinstance(x, dict) for x in self._devices):
+            raise ValueError("xbmc_devices should contain only dict")
 
-    async def get_routers(self, config: Config) -> RoutersDefType:
-        return []
+    async def find(self) -> typing.List[Device]:
+        return [XbmcDevice(XbmcDeviceParams(params)) for params in self._devices]

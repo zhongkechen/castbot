@@ -46,6 +46,7 @@ class UnknownCallbackException(Exception):
 class ConfigError(Exception):
     pass
 
+
 class PlayingVideo:
     def __init__(self,
                  config: Config,
@@ -198,7 +199,7 @@ class Bot(OnStreamClosed):
         user_id = callback.from_user.id
         control_message = callback.message
         video_message: Message = await self._mtproto.get_message(message_id)
-        if control_message.reply_to_message_id != message_id:
+        if control_message.reply_to_message_id and control_message.reply_to_message_id != message_id:
             link_message = await self._mtproto.get_message(control_message.reply_to_message_id)
         else:
             link_message = None
@@ -240,10 +241,10 @@ class Bot(OnStreamClosed):
     async def _callback_control_playback(self, playing_video, action, message: CallbackQuery):
         if action in ["DEVICE", "REFRESH"]:
             if action == "REFRESH":
-                await self._finders.refresh_all_devices(self._config)
-            return await playing_video.select_device(await self._finders.list_all_devices(self._config))
+                await self._finders.refresh_all_devices()
+            return await playing_video.select_device(await self._finders.list_all_devices())
 
-        async with async_timeout.timeout(self._config.device_request_timeout) as timeout_context:
+        async with async_timeout.timeout(self._finders.device_request_timeout) as timeout_context:
             if action == "PLAY":
                 self._http.add_remote_token(playing_video.video_message.id, playing_video.token)
                 await playing_video.play()
@@ -257,7 +258,7 @@ class Bot(OnStreamClosed):
             await message.answer("Timeout while communicate with the device")
 
     async def _callback_select_device(self, playing_video, device_name, message: CallbackQuery):
-        device = await self._finders.find_device_by_name(self._config, device_name)
+        device = await self._finders.find_device_by_name(device_name)
         if not device:
             return await message.answer("Wrong device")
 

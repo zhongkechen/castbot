@@ -11,7 +11,7 @@ import traceback
 import typing
 import urllib.request
 
-from smart_tv_telegram import Http, Mtproto, Config, Bot, device_finder
+from smart_tv_telegram import Http, Mtproto, Config, Bot, DeviceFinderCollection
 
 
 def open_config(parser: argparse.ArgumentParser, arg: str) -> typing.Optional[Config]:
@@ -33,6 +33,7 @@ def open_config(parser: argparse.ArgumentParser, arg: str) -> typing.Optional[Co
 
 
 async def async_main(config: Config):
+    device_finder = DeviceFinderCollection(config.devices)
     mtproto = Mtproto(config)
     http = Http(mtproto, config, device_finder)
     bot = Bot(mtproto, config, http, device_finder)

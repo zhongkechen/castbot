@@ -33,9 +33,6 @@ class ChromecastPlayFunction(DevicePlayerFunction):
     async def handle(self):
         await run_method_in_executor(self._device.play)
 
-    async def is_enabled(self, config: Config):
-        return True
-
 
 class ChromecastPauseFunction(DevicePlayerFunction):
     _device: catt.api.CattDevice
@@ -48,9 +45,6 @@ class ChromecastPauseFunction(DevicePlayerFunction):
 
     async def handle(self):
         await run_method_in_executor(self._device.pause)
-
-    async def is_enabled(self, config: Config):
-        return True
 
 
 class ChromecastDevice(Device):
@@ -79,12 +73,13 @@ class ChromecastDevice(Device):
 
 
 class ChromecastDeviceFinder(DeviceFinder):
-    _devices_cache: typing.Dict[str, catt.api.CattDevice]
+    def __init__(self, config):
+        self._enabled = bool(config["enabled"])
+        self._devices_cache: typing.Dict[str, catt.api.CattDevice] = {}
 
-    def __init__(self):
-        self._devices_cache = {}
-
-    async def find(self, config: Config) -> typing.List[Device]:
+    async def find(self) -> typing.List[Device]:
+        if not self._enabled:
+            return []
         found_devices: typing.List[catt.api.CattDevice] = await run_method_in_executor(catt.api.discover)
         cached_devices: typing.List[catt.api.CattDevice] = []
 
@@ -92,10 +87,3 @@ class ChromecastDeviceFinder(DeviceFinder):
             cached_devices.append(self._devices_cache.setdefault(found_device.ip_addr, found_device))
 
         return [ChromecastDevice(device) for device in cached_devices]
-
-    @staticmethod
-    def is_enabled(config: Config) -> bool:
-        return config.chromecast_enabled
-
-    async def get_routers(self, config: Config) -> RoutersDefType:
-        return []

@@ -5,6 +5,7 @@ import io
 import typing
 import xml.etree
 import xml.etree.ElementTree
+from urllib.parse import urlparse, urlunparse
 from xml.sax.saxutils import escape
 
 from aiohttp.web_request import Request
@@ -17,7 +18,6 @@ from async_upnp_client.exceptions import UpnpError
 from async_upnp_client.search import async_search
 
 from . import Device, DeviceFinder, RoutersDefType, DevicePlayerFunction, RequestHandler
-from .. import Config
 
 __all__ = [
     "UpnpDevice",
@@ -51,8 +51,8 @@ def ascii_only(haystack: str) -> str:
     return "".join(c for c in haystack if ord(c) < 128)
 
 
-def base_url(config: Config) -> str:
-    return f"http://{config.listen_host}:{config.listen_port}"
+def base_url(host, port) -> str:
+    return f"http://{host}:{port}"
 
 
 async def _upnp_safe_stop(service: UpnpService):
@@ -83,9 +83,6 @@ class UpnpReconnectFunction(DevicePlayerFunction):
         await play.async_call(InstanceID=0, Speed="1")
 
     async def get_name(self) -> str:
-        raise NotImplementedError
-
-    async def is_enabled(self, config: Config):
         raise NotImplementedError
 
 
@@ -185,21 +182,18 @@ class UpnpNotifyServer(RequestHandler):
         return Response(status=200)
 
 
-class UpnpPlayFunction(DevicePlayerFunction):
+class UpnpResumeFunction(DevicePlayerFunction):
     _service: UpnpService
 
     def __init__(self, service: UpnpService):
         self._service = service
 
     async def get_name(self) -> str:
-        return "PLAY"
+        return "RESUME"
 
     async def handle(self):
         play = self._service.action("Play")
         await play.async_call(InstanceID=0, Speed="1")
-
-    async def is_enabled(self, config: Config):
-        return config.upnp_enabled
 
 
 class UpnpPauseFunction(DevicePlayerFunction):
@@ -214,9 +208,6 @@ class UpnpPauseFunction(DevicePlayerFunction):
     async def handle(self):
         play = self._service.action("Pause")
         await play.async_call(InstanceID=0)
-
-    async def is_enabled(self, config: Config):
-        return config.upnp_enabled
 
 
 class SubscribeTask:
@@ -257,14 +248,12 @@ class SubscribeTask:
 class UpnpDevice(Device):
     _device: UpnpServiceDevice
     _service: UpnpService
-    _config: Config
     _subscribe_task: typing.Optional[SubscribeTask]
     _notify_handler: UpnpNotifyServer
 
-    def __init__(self, device: UpnpServiceDevice, config: Config, notify_handler: UpnpNotifyServer):
+    def __init__(self, device: UpnpServiceDevice, notify_handler: UpnpNotifyServer):
         self._device = device
         self._service = self._device.service(_AVTRANSPORT_SCHEMA)
-        self._config = config
         self._notify_handler = notify_handler
         self._subscribe_task = None
 
@@ -290,8 +279,8 @@ class UpnpDevice(Device):
         device_status = DeviceStatus(UpnpReconnectFunction(self._service))
         self._notify_handler.add_device(device_status, local_token)
 
-        url = f"{base_url(self._config)}/upnp/notify/{local_token}"
-        self._subscribe_task = SubscribeTask(self._device, self._service, url)
+        subscribe_url = urlunparse(urlparse(url)._replace(path=f"/upnp/notify/{local_token}"))
+        self._subscribe_task = SubscribeTask(self._device, self._service, subscribe_url)
         await self._subscribe_task.start()
 
         play = self._service.action("Play")
@@ -299,18 +288,21 @@ class UpnpDevice(Device):
 
     def get_player_functions(self) -> typing.List[DevicePlayerFunction]:
         return [
-            UpnpPlayFunction(self._service),
+            UpnpResumeFunction(self._service),
             UpnpPauseFunction(self._service)
         ]
 
 
 class UpnpDeviceFinder(DeviceFinder):
-    _notify_handler: UpnpNotifyServer
-
-    def __init__(self):
+    def __init__(self, config):
         self._notify_handler = UpnpNotifyServer()
+        self._enabled = bool(config["enabled"])
+        if self._enabled:
+            self._scan_timeout = int(config["scan_timeout"])
 
-    async def find(self, config: Config) -> typing.List[Device]:
+    async def find(self) -> typing.List[Device]:
+        if not self._enabled:
+            return []
         devices = []
         requester = AiohttpRequester()
         factory = UpnpFactory(requester)
@@ -323,14 +315,12 @@ class UpnpDeviceFinder(DeviceFinder):
                 found_locations.add(location)
 
         await async_search(search_target=_AVTRANSPORT_SCHEMA,
-                           timeout=config.upnp_scan_timeout,
+                           timeout=self._scan_timeout,
                            async_callback=on_response)
 
-        return [UpnpDevice(device, config, self._notify_handler) for device in devices]
+        return [UpnpDevice(device, self._notify_handler) for device in devices]
 
-    @staticmethod
-    def is_enabled(config: Config) -> bool:
-        return config.upnp_enabled
-
-    async def get_routers(self, config: Config) -> RoutersDefType:
+    def get_routers(self) -> RoutersDefType:
+        if not self._enabled:
+            return []
         return [self._notify_handler]

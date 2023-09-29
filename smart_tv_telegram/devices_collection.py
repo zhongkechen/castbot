@@ -3,53 +3,48 @@ import typing
 
 import async_timeout
 
-from smart_tv_telegram import Config
 from smart_tv_telegram.devices import DeviceFinder, UpnpDeviceFinder, ChromecastDeviceFinder, VlcDeviceFinder, \
     WebDeviceFinder, XbmcDeviceFinder, Device
 
 __all__ = [
-    "DeviceFinderCollection",
-    "device_finder"
+    "DeviceFinderCollection"
 ]
 
 
 class DeviceFinderCollection:
-    _finders: typing.List[DeviceFinder]
-
-    def __init__(self):
-        self._finders = []
+    def __init__(self, config):
+        self.device_request_timeout = int(config.get("device_request_timeout", 10))
+        self._finders: typing.List[DeviceFinder] = [
+            UpnpDeviceFinder(config["upnp"]),
+            ChromecastDeviceFinder(config["chromecast"]),
+            VlcDeviceFinder(config["vlc"]),
+            WebDeviceFinder(config["web"]),
+            XbmcDeviceFinder(config["xbmc"])]
         self._devices: typing.List[Device] = []
 
-    def register_finder(self, finder: DeviceFinder):
-        self._finders.append(finder)
+    def get_all_routers(self):
+        for finder in self._finders:
+            routers = finder.get_routers()
 
-    def get_finders(self, config: Config) -> typing.List[DeviceFinder]:
-        return [finder for finder in self._finders if finder.is_enabled(config)]
+            for handler in routers:
+                yield handler.get_method(), handler.get_path(), handler.handle
 
-    async def refresh_all_devices(self, config: Config):
+    async def refresh_all_devices(self):
         self._devices = []
-        for finder in self.get_finders(config):
+        for finder in self._finders:
             try:
-                with async_timeout.timeout(config.device_request_timeout + 1):
-                    self._devices.extend(await finder.find(config))
+                with async_timeout.timeout(self.device_request_timeout + 1):
+                    self._devices.extend(await finder.find())
             except asyncio.CancelledError:
                 pass
 
-    async def find_device_by_name(self, config, device_name):
+    async def find_device_by_name(self, device_name):
         if not self._devices:
-            await self.refresh_all_devices(config)
+            await self.refresh_all_devices()
         devices = [device for device in self._devices if repr(device) == device_name]
         return devices[0] if devices else None
 
-    async def list_all_devices(self, config):
+    async def list_all_devices(self):
         if not self._devices:
-            await self.refresh_all_devices(config)
+            await self.refresh_all_devices()
         return self._devices
-
-
-device_finder = DeviceFinderCollection()
-device_finder.register_finder(UpnpDeviceFinder())
-device_finder.register_finder(ChromecastDeviceFinder())
-device_finder.register_finder(VlcDeviceFinder())
-device_finder.register_finder(WebDeviceFinder())
-device_finder.register_finder(XbmcDeviceFinder())

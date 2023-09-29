@@ -11,9 +11,6 @@ __all__ = [
 
 class Config:
     downloader: str = "youtube-dl"
-    upnp_scan_timeout: int = 0
-    chromecast_scan_timeout: int = 0
-    web_ui_password: str = ""
 
     def __init__(self, path: str):
         config = tomllib.load(open(path, "rb"))
@@ -29,59 +26,11 @@ class Config:
 
         self.downloader = str(config["bot"]["downloader"])
         self.request_gone_timeout = int(config["bot"]["request_gone_timeout"])
-        self.device_request_timeout = int(config["discovery"]["device_request_timeout"])
 
-        self.upnp_enabled = bool(int(config["discovery"]["upnp_enabled"]))
+        self.devices = config["devices"]
 
-        if self.upnp_enabled:
-            self.upnp_scan_timeout = int(config["discovery"]["upnp_scan_timeout"])
-
-            if self.upnp_scan_timeout > self.device_request_timeout:
-                raise ValueError("upnp_scan_timeout should < device_request_timeout")
-
-        self.web_ui_enabled = bool(int(config["web_ui"]["enabled"]))
-
-        if self.web_ui_enabled:
-            self.web_ui_password = config["web_ui"]["password"]
-
-        self.chromecast_enabled = bool(int(config["discovery"]["chromecast_enabled"]))
-
-        self.xbmc_enabled = bool(int(config["discovery"]["xbmc_enabled"]))
-
-        if self.xbmc_enabled:
-            self.xbmc_devices = config["discovery"]["xbmc_devices"]
-
-            if not isinstance(self.xbmc_devices, list):
-                raise ValueError("xbmc_devices should be a list")
-
-            if not all(isinstance(x, dict) for x in self.xbmc_devices):
-                raise ValueError("xbmc_devices should contain only dict")
-
-        else:
-            self.xbmc_devices = []
-
-        self.vlc_enabled = bool(int(config["discovery"]["vlc_enabled"]))
-
-        if self.vlc_enabled:
-            self.vlc_devices = config["discovery"]["vlc_devices"]
-
-            if not isinstance(self.xbmc_devices, list):
-                raise ValueError("vlc_devices should be a list")
-
-            if not all(isinstance(x, dict) for x in self.xbmc_devices):
-                raise ValueError("vlc_devices should contain only dict")
-
-        else:
-            self.vlc_devices = []
-
-        if self.chromecast_enabled:
-            self.chromecast_scan_timeout = int(config["discovery"]["chromecast_scan_timeout"])
-
-            if self.chromecast_scan_timeout > self.device_request_timeout:
-                raise ValueError("chromecast_scan_timeout should < device_request_timeout")
-
-        self.admins = config["bot"]["admins"]
         self.block_size = int(config["bot"]["block_size"])
+        self.admins = config["bot"]["admins"]
 
         if not isinstance(self.admins, list):
             raise ValueError("admins should be a list")

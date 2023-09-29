@@ -130,11 +130,8 @@ class Http:
         app.router.add_put("/stream/{message_id}/{token}", self._upnp_discovery_handler)
         app.router.add_get("/healthcheck", self._health_check_handler)
 
-        for finder in self._finders.get_finders(self._config):
-            routers = await finder.get_routers(self._config)
-
-            for handler in routers:
-                app.router.add_route(handler.get_method(), handler.get_path(), handler.handle)
+        for method, path, handle in self._finders.get_all_routers():
+            app.router.add_route(method, path, handle)
 
         # noinspection PyProtectedMember
         await web._run_app(app, host=self._config.listen_host, port=self._config.listen_port)

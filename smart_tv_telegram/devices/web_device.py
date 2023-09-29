@@ -57,12 +57,11 @@ class WebDevice(Device):
 
 
 class WebDeviceApiRequestRegisterDevice(RequestHandler):
-    _config: Config
     _devices: typing.Dict[int, WebDevice]
 
-    def __init__(self, config: Config, devices: typing.Dict[int, WebDevice]):
-        self._config = config
+    def __init__(self, password: str, devices: typing.Dict[int, WebDevice]):
         self._devices = devices
+        self._password = password
 
     def get_path(self) -> str:
         return "/web/api/register/{password}"
@@ -73,7 +72,7 @@ class WebDeviceApiRequestRegisterDevice(RequestHandler):
     async def handle(self, request: Request) -> Response:
         password = request.match_info["password"]
 
-        if password != self._config.web_ui_password:
+        if password != self._password:
             return Response(status=403)
 
         remote_token = secret_token()
@@ -85,9 +84,8 @@ class WebDeviceApiRequestPoll(RequestHandler):
     _config: Config
     _devices: typing.Dict[int, WebDevice]
 
-    def __init__(self, config: Config, devices: typing.Dict[int, WebDevice]):
+    def __init__(self, devices: typing.Dict[int, WebDevice]):
         self._devices = devices
-        self._config = config
 
     def get_path(self) -> str:
         return "/web/api/poll/{remote_token}"
@@ -118,12 +116,17 @@ class WebDeviceApiRequestPoll(RequestHandler):
 class WebDeviceFinder(DeviceFinder):
     _devices: typing.Dict[int, WebDevice]
 
-    def __init__(self):
+    def __init__(self, config):
         self._devices = {}
+        self._enabled = bool(config["enabled"])
+        self._request_timeout = int(config.get("request_timeout", 10))
+        self._password = str(config.get("password", ""))
 
-    async def find(self, config: Config) -> typing.List[Device]:
+    async def find(self) -> typing.List[Device]:
+        if not self._enabled:
+            return []
         devices = list(self._devices.values())
-        min_timestamp = time.time() - config.device_request_timeout
+        min_timestamp = time.time() - self._request_timeout
 
         for device in devices:
             if device.manipulate_timestamp() < min_timestamp:
@@ -131,12 +134,10 @@ class WebDeviceFinder(DeviceFinder):
 
         return list(self._devices.values())
 
-    @staticmethod
-    def is_enabled(config: Config) -> bool:
-        return config.web_ui_enabled
-
-    async def get_routers(self, config: Config) -> RoutersDefType:
+    def get_routers(self) -> RoutersDefType:
+        if not self._enabled:
+            return []
         return [
-            WebDeviceApiRequestRegisterDevice(config, self._devices),
-            WebDeviceApiRequestPoll(config, self._devices)
+            WebDeviceApiRequestRegisterDevice(self._password, self._devices),
+            WebDeviceApiRequestPoll(self._devices)
         ]

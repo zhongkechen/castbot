@@ -15,24 +15,29 @@ downloader = "youtube-dl"
 listen_host = "192.168.1.2"
 listen_port = 8350
 
-[web_ui]
-enabled=0
-password="owo"
-
-[discovery]
-upnp_enabled=1
-upnp_scan_timeout=3
-chromecast_enabled=0
-chromecast_scan_timeout=6
-xbmc_enabled=0
-vlc_enabled=0
+[devices]
 device_request_timeout=10
 
-[[discovery.xbmc_devices]]
-host = "192.168.42.140"
-port = 8080
+[devices.upnp]
+enabled=1
+scan_timeout=5
 
-[[discovery.vlc_devices]]
+[devices.chromecast]
+enabled=0
+scan_timeout=2
+
+[devices.web]
+enabled=0
+password="owo"
+request_timeout=10
+
+[[devices.vlc]]
 host = "127.0.0.1"
 port = 4212
 password = "123"
+
+[[devices.xbmc]]
+host = "192.168.42.140"
+port = 8080
+username = ""
+password = ""

@@ -3,8 +3,7 @@ import io
 import logging
 import typing
 
-from . import DeviceFinder, Device, RoutersDefType, DevicePlayerFunction
-from .. import Config
+from . import DeviceFinder, Device, DevicePlayerFunction
 
 __all__ = [
     "VlcDevice",
@@ -94,15 +93,13 @@ class VlcDevice(Device):
 
 
 class VlcDeviceFinder(DeviceFinder):
-    async def find(self, config: Config) -> typing.List[Device]:
-        return [
-            VlcDevice(VlcDeviceParams(params))
-            for params in config.vlc_devices
-        ]
+    def __init__(self, config):
+        self._devices = config
+        if not isinstance(self._devices, list):
+            raise ValueError("vlc should be a list")
 
-    @staticmethod
-    def is_enabled(config: Config) -> bool:
-        return config.vlc_enabled
+        if not all(isinstance(x, dict) for x in self._devices):
+            raise ValueError("vlc should contain only dict")
 
-    async def get_routers(self, config: Config) -> RoutersDefType:
-        return []
+    async def find(self) -> typing.List[Device]:
+        return [VlcDevice(VlcDeviceParams(params)) for params in self._devices]
