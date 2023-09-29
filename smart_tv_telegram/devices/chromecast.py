@@ -5,7 +5,7 @@ import typing
 
 import catt.api
 
-from ..device import Device, DeviceFinder, DevicePlayerFunction
+from ..device import Device, DeviceFinder
 
 __all__ = ["Finder"]
 
@@ -16,32 +16,6 @@ _EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 async def run_method_in_executor(func, *args, **kwargs):
     partial_function = functools.partial(func, *args, **kwargs)
     return await asyncio.get_event_loop().run_in_executor(_EXECUTOR, partial_function)
-
-
-class ChromecastPlayFunction(DevicePlayerFunction):
-    _device: catt.api.CattDevice
-
-    def __init__(self, device: catt.api.CattDevice):
-        self._device = device
-
-    async def get_name(self) -> str:
-        return "PLAY"
-
-    async def handle(self):
-        await run_method_in_executor(self._device.play)
-
-
-class ChromecastPauseFunction(DevicePlayerFunction):
-    _device: catt.api.CattDevice
-
-    def __init__(self, device: catt.api.CattDevice):
-        self._device = device
-
-    async def get_name(self) -> str:
-        return "PAUSE"
-
-    async def handle(self):
-        await run_method_in_executor(self._device.pause)
 
 
 class ChromecastDevice(Device):
@@ -62,11 +36,11 @@ class ChromecastDevice(Device):
     async def play(self, url: str, title: str, local_token: int):
         await run_method_in_executor(self._device.play_url, url, title=title)
 
-    def get_player_functions(self) -> typing.List[DevicePlayerFunction]:
-        return [
-            ChromecastPlayFunction(self._device),
-            ChromecastPauseFunction(self._device)
-        ]
+    async def resume(self):
+        await run_method_in_executor(self._device.play)
+
+    async def pause(self):
+        await run_method_in_executor(self._device.pause)
 
 
 class ChromecastDeviceFinder(DeviceFinder):

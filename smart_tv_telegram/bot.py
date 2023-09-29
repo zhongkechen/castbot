@@ -9,6 +9,7 @@ import tempfile
 
 import async_timeout
 from pyrogram import Client, filters
+from pyrogram.errors import MessageNotModified
 from pyrogram.filters import create
 from pyrogram.handlers import MessageHandler, CallbackQueryHandler
 from pyrogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -99,7 +100,10 @@ class PlayingVideo:
 
     async def create_or_update_control_message(self, text, buttons):
         if self.control_message:
-            await self.control_message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
+            try:
+                await self.control_message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
+            except MessageNotModified:
+                pass
         else:
             self.control_message = await self.video_message.reply(text, reply_markup=InlineKeyboardMarkup(buttons))
 
@@ -130,20 +134,18 @@ class PlayingVideo:
     async def pause(self):
         if not self.playing_device:
             raise NoDeviceException
-        for function in self.playing_device.get_player_functions():
-            if (await function.get_name()).upper() == "PAUSE":
-                await function.handle()
-                return await self.send_paused_control_message()
+        if hasattr(self.playing_device, "pause"):
+            await self.playing_device.pause()
+            return await self.send_paused_control_message()
         else:
             raise ActionNotSupportedException
 
     async def resume(self):
         if not self.playing_device:
             raise NoDeviceException
-        for function in self.playing_device.get_player_functions():
-            if (await function.get_name()).upper() == "RESUME":
-                await function.handle()
-                return await self.send_playing_control_message()
+        if hasattr(self.playing_device, "resume"):
+            await self.playing_device.resume()
+            return await self.send_playing_control_message()
         else:
             raise ActionNotSupportedException
 

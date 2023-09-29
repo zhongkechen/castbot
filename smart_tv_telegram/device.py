@@ -26,18 +26,7 @@ __all__ = [
     "DeviceFinder",
     "RoutersDefType",
     "RequestHandler",
-    "DevicePlayerFunction"
 ]
-
-
-class DevicePlayerFunction(abc.ABC):
-    @abc.abstractmethod
-    async def get_name(self) -> str:
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    async def handle(self):
-        raise NotImplementedError
 
 
 class Device(abc.ABC):
@@ -51,10 +40,6 @@ class Device(abc.ABC):
 
     @abc.abstractmethod
     def get_device_name(self) -> str:
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def get_player_functions(self) -> typing.List[DevicePlayerFunction]:
         raise NotImplementedError
 
     @abc.abstractmethod

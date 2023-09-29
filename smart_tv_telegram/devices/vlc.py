@@ -3,7 +3,7 @@ import io
 import logging
 import typing
 
-from ..device import DeviceFinder, Device, DevicePlayerFunction
+from ..device import DeviceFinder, Device
 
 __all__ = ["Finder"]
 
@@ -84,9 +84,6 @@ class VlcDevice(Device):
     async def play(self, url: str, title: str, local_token: int):
         await self._call("add", url)
         await self._call("play")
-
-    def get_player_functions(self) -> typing.List[DevicePlayerFunction]:
-        return []
 
 
 class VlcDeviceFinder(DeviceFinder):

@@ -17,7 +17,7 @@ from async_upnp_client.event_handler import UpnpEventHandler
 from async_upnp_client.exceptions import UpnpError
 from async_upnp_client.search import async_search
 
-from ..device import Device, DeviceFinder, RoutersDefType, DevicePlayerFunction, RequestHandler
+from ..device import Device, DeviceFinder, RoutersDefType, RequestHandler
 
 __all__ = ["Finder"]
 
@@ -69,20 +69,6 @@ async def _upnp_safe_stop(service: UpnpService):
         raise error
 
 
-class UpnpReconnectFunction(DevicePlayerFunction):
-    _service: UpnpService
-
-    def __init__(self, service: UpnpService):
-        self._service = service
-
-    async def handle(self):
-        play = self._service.action("Play")
-        await play.async_call(InstanceID=0, Speed="1")
-
-    async def get_name(self) -> str:
-        raise NotImplementedError
-
-
 class UpnpPlayerStatus(enum.Enum):
     PLAYING = enum.auto()
     ERROR = enum.auto()
@@ -121,12 +107,8 @@ def _player_status(data: bytes) -> UpnpPlayerStatus:
 
 
 class DeviceStatus:
-    reconnect: UpnpReconnectFunction
-    playing: bool
-    errored: bool
-
-    def __init__(self, reconnect: UpnpReconnectFunction, playing: bool = False, errored: bool = False):
-        self.reconnect = reconnect
+    def __init__(self, device: "UpnpDevice", playing: bool = False, errored: bool = False):
+        self.device = device
         self.playing = playing
         self.errored = errored
 
@@ -174,37 +156,9 @@ class UpnpNotifyServer(RequestHandler):
         if device.errored and status == UpnpPlayerStatus.NOTHING:
             device.errored = False
             device.playing = False
-            await device.reconnect.handle()
+            await device.device.reconnect()
 
         return Response(status=200)
-
-
-class UpnpResumeFunction(DevicePlayerFunction):
-    _service: UpnpService
-
-    def __init__(self, service: UpnpService):
-        self._service = service
-
-    async def get_name(self) -> str:
-        return "RESUME"
-
-    async def handle(self):
-        play = self._service.action("Play")
-        await play.async_call(InstanceID=0, Speed="1")
-
-
-class UpnpPauseFunction(DevicePlayerFunction):
-    _service: UpnpService
-
-    def __init__(self, service: UpnpService):
-        self._service = service
-
-    async def get_name(self) -> str:
-        return "PAUSE"
-
-    async def handle(self):
-        play = self._service.action("Pause")
-        await play.async_call(InstanceID=0)
 
 
 class SubscribeTask:
@@ -273,7 +227,7 @@ class UpnpDevice(Device):
         meta = _DLL_METADATA.format(title=escape(ascii_only(title)), url=escape(url), flags=_VIDEO_FLAGS)
         await set_url.async_call(InstanceID=0, CurrentURI=url, CurrentURIMetaData=meta)
 
-        device_status = DeviceStatus(UpnpReconnectFunction(self._service))
+        device_status = DeviceStatus(self)
         self._notify_handler.add_device(device_status, local_token)
 
         subscribe_url = urlunparse(urlparse(url)._replace(path=f"/upnp/notify/{local_token}"))
@@ -283,11 +237,17 @@ class UpnpDevice(Device):
         play = self._service.action("Play")
         await play.async_call(InstanceID=0, Speed="1")
 
-    def get_player_functions(self) -> typing.List[DevicePlayerFunction]:
-        return [
-            UpnpResumeFunction(self._service),
-            UpnpPauseFunction(self._service)
-        ]
+    async def resume(self):
+        play = self._service.action("Play")
+        await play.async_call(InstanceID=0, Speed="1")
+
+    async def pause(self):
+        play = self._service.action("Pause")
+        await play.async_call(InstanceID=0)
+
+    async def reconnect(self):
+        play = self._service.action("Play")
+        await play.async_call(InstanceID=0, Speed="1")
 
 
 class UpnpDeviceFinder(DeviceFinder):
