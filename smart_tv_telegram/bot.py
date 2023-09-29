@@ -5,7 +5,6 @@ import os.path
 import re
 import traceback
 import typing
-import tempfile
 
 import async_timeout
 from pyrogram import Client, filters
@@ -162,9 +161,8 @@ def pyrogram_filename(message: Message) -> str:
 
 
 class Bot(OnStreamClosed):
-    def __init__(self, mtproto: Mtproto, config, http: Http, finders: DeviceFinderCollection):
-        self._downloader = str(config["downloader"])
-        assert self._downloader in ["youtube-dl", "you-get"]
+    def __init__(self, config, mtproto: Mtproto, downloader, http: Http, finders: DeviceFinderCollection):
+        self._downloader = downloader
         self._admins = config["admins"]
         if not isinstance(self._admins, list):
             raise ValueError("admins should be a list")
@@ -177,7 +175,6 @@ class Bot(OnStreamClosed):
         self._user_data: typing.Dict[int, UserData] = {}
         self._playing_videos: typing.Dict[int, PlayingVideo] = {}
 
-        self._http.set_on_stream_closed_handler(self)
         self.prepare()
 
     def prepare(self):
@@ -292,26 +289,12 @@ class Bot(OnStreamClosed):
                                             reply_to_message_id=message.id,
                                             disable_web_page_preview=True)
         try:
-            with tempfile.TemporaryDirectory() as tmpdir:
-                if self._downloader == "youtube-dl":
-                    output_filename = os.path.join(tmpdir, "video1.mp4")
-                    process = await asyncio.create_subprocess_shell(
-                        f"youtube-dl -v -f mp4 -o {output_filename} '{url}'")
-                elif self._downloader == "you-get":
-                    output_filename = os.path.join(tmpdir, "video1")
-                    process = await asyncio.create_subprocess_shell(f"you-get -O {output_filename} '{url}'")
-                    output_filename = output_filename + ".mp4"
-                else:
-                    raise ConfigError
-
-                await process.communicate()
-
+            async with self._downloader.download(url) as output_filename:
                 file_stats = os.stat(output_filename)
                 await reply_message.edit_text(f"Download completed. Uploading video (size={file_stats.st_size})")
                 reader = open(output_filename, mode='rb')
                 video_message = await message.reply_video(reader, reply_to_message_id=message.id)
-                await reply_message.edit_text(f"Upload completed.")
-
+            await reply_message.edit_text(f"Upload completed.")
             await self._new_document(client, video_message, link_message=message, control_message=reply_message)
         except Exception as e:
             await reply_message.edit_text(f"Exception thrown {e} when downloading {url}: {traceback.format_exc()}")

@@ -224,10 +224,8 @@ class Http:
                 del self._stream_transports[local_token]
 
             remain_blocks_perceptual = remain_blocks / blocks * 100
-            on_stream_closed = self._on_stream_closed
-
-            if isinstance(on_stream_closed, OnStreamClosed):
-                await on_stream_closed.handle_closed(remain_blocks_perceptual, local_token)
+            if isinstance(self._on_stream_closed, OnStreamClosed):
+                await self._on_stream_closed.handle_closed(remain_blocks_perceptual, local_token)
 
         if local_token in self._stream_debounce:
             self._stream_debounce[local_token].reschedule()

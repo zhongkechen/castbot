@@ -3,6 +3,7 @@ import logging
 import argparse
 import os.path
 import sys
+
 try:
     import tomllib
 except ImportError:
@@ -10,7 +11,7 @@ except ImportError:
 import traceback
 import urllib.request
 
-from smart_tv_telegram import Http, Mtproto, Bot, DeviceFinderCollection
+from smart_tv_telegram import Http, Mtproto, Bot, DeviceFinderCollection, Downloader
 
 
 def open_config(parser: argparse.ArgumentParser, arg: str):
@@ -35,7 +36,9 @@ async def async_main(config):
     device_finder = DeviceFinderCollection(config["devices"])
     mtproto = Mtproto(config["mtproto"])
     http = Http(mtproto, config["http"], device_finder)
-    bot = Bot(mtproto, config["bot"], http, device_finder)
+    downloader = Downloader(config["downloader"])
+    bot = Bot(config["bot"], mtproto, downloader, http, device_finder)
+    http.set_on_stream_closed_handler(bot)
 
     await mtproto.start()
     await http.start()
