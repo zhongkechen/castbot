@@ -1,0 +1,38 @@
+[mtproto]
+api_id=6
+api_hash="eb06d4abfb49dc3eeb1aeb98ae0f581e"
+token="xxxxxxxxx"
+session_name="smart_tv_telegram"
+file_fake_fw_wait=0.2
+
+[bot]
+admins=[337885031,32432424,44353421]
+block_size=1048576
+request_gone_timeout=900
+downloader = "youtube-dl"
+
+[http]
+listen_host = "192.168.1.2"
+listen_port = 8350
+
+[web_ui]
+enabled=0
+password="owo"
+
+[discovery]
+upnp_enabled=1
+upnp_scan_timeout=3
+chromecast_enabled=0
+chromecast_scan_timeout=6
+xbmc_enabled=0
+vlc_enabled=0
+device_request_timeout=10
+
+[[discovery.xbmc_devices]]
+host = "192.168.42.140"
+port = 8080
+
+[[discovery.vlc_devices]]
+host = "127.0.0.1"
+port = 4212
+password = "123"

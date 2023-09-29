@@ -5,7 +5,7 @@ venv/
 *.keys
 __pycache__/
 *.pyc
-config.ini
+config.toml
 .idea/
 dist/
 build/

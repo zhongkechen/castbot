@@ -33,9 +33,9 @@ curl -sSL https://install.python-poetry.org | python3 -
 git clone https://github.com/andrew-ld/smart-tv-telegram
 cd smart-tv-telegram
 poetry install
-cp config.ini.example config.ini
-nano config.ini
-poetry run smart_tv_telegram -c config.ini -v 1
+cp config.toml.example config.toml
+nano config.toml
+poetry run smart_tv_telegram -c config.toml -v 1
 ```
 
 ## How-to setup (Docker)
@@ -45,8 +45,8 @@ poetry run smart_tv_telegram -c config.ini -v 1
 - Start Docker container
 
 ```bash
-cp config.ini.example config.ini
-nano config.ini
+cp config.toml.example config.toml
+nano config.toml
 docker image build -t smart-tv-telegram:latest .
 docker run --network host -v "$(pwd)/config.ini:/app/config.ini:ro" -d smart-tv-telegram:latest
 ```

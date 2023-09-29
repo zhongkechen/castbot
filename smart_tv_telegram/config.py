@@ -1,6 +1,8 @@
-import ast
-import configparser
-import typing
+try:
+    import tomllib
+except ImportError:
+    import toml as tomllib
+
 
 __all__ = [
     "Config"
@@ -8,41 +10,13 @@ __all__ = [
 
 
 class Config:
-    api_id: int
-    api_hash: str
-    token: str
-    session_name: str
-    file_fake_fw_wait: float
     downloader: str = "youtube-dl"
-
-    device_request_timeout: int
-
-    listen_host: str
-    listen_port: int
-
-    upnp_enabled: bool
     upnp_scan_timeout: int = 0
-
-    chromecast_enabled: bool
     chromecast_scan_timeout: int = 0
-
-    web_ui_enabled: bool
     web_ui_password: str = ""
 
-    xbmc_enabled: bool
-    xbmc_devices: typing.List[dict]
-
-    vlc_enabled: bool
-    vlc_devices: typing.List[dict]
-
-    request_gone_timeout: int
-
-    admins: typing.List[int]
-    block_size: int
-
     def __init__(self, path: str):
-        config = configparser.ConfigParser()
-        config.read(path)
+        config = tomllib.load(open(path, "rb"))
 
         self.api_id = int(config["mtproto"]["api_id"])
         self.api_hash = str(config["mtproto"]["api_hash"])
@@ -75,7 +49,7 @@ class Config:
         self.xbmc_enabled = bool(int(config["discovery"]["xbmc_enabled"]))
 
         if self.xbmc_enabled:
-            self.xbmc_devices = ast.literal_eval(config["discovery"]["xbmc_devices"])
+            self.xbmc_devices = config["discovery"]["xbmc_devices"]
 
             if not isinstance(self.xbmc_devices, list):
                 raise ValueError("xbmc_devices should be a list")
@@ -89,7 +63,7 @@ class Config:
         self.vlc_enabled = bool(int(config["discovery"]["vlc_enabled"]))
 
         if self.vlc_enabled:
-            self.vlc_devices = ast.literal_eval(config["discovery"]["vlc_devices"])
+            self.vlc_devices = config["discovery"]["vlc_devices"]
 
             if not isinstance(self.xbmc_devices, list):
                 raise ValueError("vlc_devices should be a list")
@@ -106,7 +80,7 @@ class Config:
             if self.chromecast_scan_timeout > self.device_request_timeout:
                 raise ValueError("chromecast_scan_timeout should < device_request_timeout")
 
-        self.admins = ast.literal_eval(config["bot"]["admins"])
+        self.admins = config["bot"]["admins"]
         self.block_size = int(config["bot"]["block_size"])
 
         if not isinstance(self.admins, list):

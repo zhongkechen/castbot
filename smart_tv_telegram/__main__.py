@@ -1,9 +1,12 @@
 import asyncio
-import configparser
 import logging
 import argparse
 import os.path
 import sys
+try:
+    import tomllib
+except ImportError:
+    import toml as tomllib
 import traceback
 import typing
 import urllib.request
@@ -19,12 +22,12 @@ def open_config(parser: argparse.ArgumentParser, arg: str) -> typing.Optional[Co
 
     try:
         return Config(arg)
+    except tomllib.TOMLDecodeError as err:
+        parser.error(f"config file parsing error:\n{str(err)}")
     except ValueError as err:
         parser.error(str(err))
     except KeyError as err:
         parser.error(f"config key {str(err)} does not exists")
-    except configparser.Error as err:
-        parser.error(f"generic configparser error:\n{str(err)}")
 
     return None
 
@@ -56,7 +59,7 @@ def health_check(config: Config):
 
 def entry_point():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-c", "--config", type=lambda x: open_config(parser, x), default="config.ini")
+    parser.add_argument("-c", "--config", type=lambda x: open_config(parser, x), default="config.toml")
     parser.add_argument("-v", "--verbosity", type=int, choices=[0, 1, 2], default=0)
     parser.add_argument("-hc", "--healthcheck", type=bool, default=False, const=True, nargs="?")
 
