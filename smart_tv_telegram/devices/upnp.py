@@ -8,6 +8,7 @@ import xml.etree.ElementTree
 from urllib.parse import urlparse, urlunparse
 from xml.sax.saxutils import escape
 
+import async_upnp_client
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 from async_upnp_client.aiohttp import AiohttpRequester
@@ -161,6 +162,22 @@ class UpnpNotifyServer(RequestHandler):
         return Response(status=200)
 
 
+class NotifyServer(async_upnp_client.event_handler.UpnpNotifyServer):
+    def __init__(self, url):
+        super().__init__()
+        self.url = url
+
+    @property
+    def callback_url(self) -> str:
+        return self.url
+
+    async def async_start_server(self) -> None:
+        pass
+
+    async def async_stop_server(self) -> None:
+        pass
+
+
 class SubscribeTask:
     _service: UpnpService
     _task: typing.Optional[asyncio.Task]
@@ -172,7 +189,7 @@ class SubscribeTask:
                  url: str):
         self._service = service
         self._task = None
-        self._event_handler = UpnpEventHandler(url, device.requester)
+        self._event_handler = UpnpEventHandler(NotifyServer(url), device.requester)
 
     async def start(self):
         await self.close()

@@ -11,7 +11,7 @@ except ImportError:
 import traceback
 import urllib.request
 
-from smart_tv_telegram import Http, Mtproto, Bot, DeviceFinderCollection, Downloader
+from smart_tv_telegram import Http, Bot, DeviceFinderCollection, Downloader
 
 
 def open_config(parser: argparse.ArgumentParser, arg: str):
@@ -34,13 +34,12 @@ def open_config(parser: argparse.ArgumentParser, arg: str):
 
 async def async_main(config):
     device_finder = DeviceFinderCollection(config["devices"])
-    mtproto = Mtproto(config["mtproto"])
-    http = Http(mtproto, config["http"], device_finder)
+    http = Http(config["http"], device_finder)
     downloader = Downloader(config["downloader"])
-    bot = Bot(config["bot"], mtproto, downloader, http, device_finder)
-    http.set_on_stream_closed_handler(bot)
+    bot = Bot(config["bot"], downloader, http, device_finder)
+    http.set_bot(bot)
 
-    await mtproto.start()
+    await bot.start()
     await http.start()
 
 

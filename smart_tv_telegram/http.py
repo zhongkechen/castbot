@@ -11,20 +11,32 @@ from aiohttp.web_response import Response, StreamResponse
 from pyrogram.raw.types import MessageMediaDocument, Document, DocumentAttributeFilename
 from pyrogram.types import Message
 
-from . import Mtproto, DeviceFinderCollection
+from . import DeviceFinderCollection
 from .tools import serialize_token
 
 __all__ = [
     "Http",
-    "OnStreamClosed"
+    "BotInterface"
 ]
 
 _RANGE_REGEX = re.compile(r"bytes=([0-9]+)-([0-9]+)?")
 
 
-class OnStreamClosed(abc.ABC):
+class BotInterface(abc.ABC):
     @abc.abstractmethod
     async def handle_closed(self, remains: float, local_token: int):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    async def health_check(self):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    async def get_block(self, message: Message, offset: int, block_size: int) -> bytes:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    async def get_message(self, message_id: int) -> Message:
         raise NotImplementedError
 
 
@@ -108,25 +120,24 @@ def parse_http_range(http_range: str, block_size: int) -> typing.Tuple[int, int,
 
 
 class Http:
-    def __init__(self, mtproto: Mtproto, config, finders: DeviceFinderCollection):
+    def __init__(self, config, finders: DeviceFinderCollection):
         self._listen_port = int(config["listen_port"])
         self._listen_host = str(config["listen_host"])
         self._request_gone_timeout = int(config["request_gone_timeout"])
         self._block_size = int(config["block_size"])
-        self._mtproto = mtproto
         self._finders = finders
 
         self._tokens: typing.Set[int] = set()
         self._downloaded_blocks: typing.Dict[int, typing.Set[int]] = {}
         self._stream_debounce: typing.Dict[int, AsyncDebounce] = {}
         self._stream_transports: typing.Dict[int, typing.Set[asyncio.Transport]] = {}
-        self._on_stream_closed: typing.Optional[OnStreamClosed] = None
+        self._bot: typing.Optional[BotInterface] = None
 
     def build_streaming_uri(self, msg_id: int, token: int) -> str:
         return f"http://{self._listen_host}:{self._listen_port}/stream/{msg_id}/{token}"
 
-    def set_on_stream_closed_handler(self, handler: OnStreamClosed):
-        self._on_stream_closed = handler
+    def set_bot(self, handler: BotInterface):
+        self._bot = handler
 
     async def start(self):
         app = web.Application()
@@ -172,7 +183,7 @@ class Http:
 
     async def _health_check_handler(self, _: Request) -> typing.Optional[Response]:
         try:
-            await self._mtproto.health_check()
+            await self._bot.health_check()
             return Response(status=200, text="ok")
         except ConnectionError:
             return Response(status=500, text="gone")
@@ -224,8 +235,8 @@ class Http:
                 del self._stream_transports[local_token]
 
             remain_blocks_perceptual = remain_blocks / blocks * 100
-            if isinstance(self._on_stream_closed, OnStreamClosed):
-                await self._on_stream_closed.handle_closed(remain_blocks_perceptual, local_token)
+            if isinstance(self._bot, BotInterface):
+                await self._bot.handle_closed(remain_blocks_perceptual, local_token)
 
         if local_token in self._stream_debounce:
             self._stream_debounce[local_token].reschedule()
@@ -270,7 +281,7 @@ class Http:
             return Response(status=500)
 
         try:
-            message = await self._mtproto.get_message(int(message_id))
+            message = await self._bot.get_message(int(message_id))
         except ValueError:
             return Response(status=404)
 
@@ -307,7 +318,7 @@ class Http:
 
         while offset < max_size:
             self._feed_timeout(local_token, size)
-            block = await self._mtproto.get_block(message, offset, self._block_size)
+            block = await self._bot.get_block(message, offset, self._block_size)
             new_offset = offset + len(block)
 
             if data_to_skip:
