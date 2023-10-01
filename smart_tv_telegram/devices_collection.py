@@ -17,7 +17,7 @@ class DeviceFinderCollection:
     def __init__(self, config):
         self.device_request_timeout = int(config.get("device_request_timeout", 10))
         self._finders: typing.List[device.DeviceFinder] = [
-            importlib.import_module("." + name, ".devices").Finder(config[name])
+            importlib.import_module("." + name, "smart_tv_telegram.devices").Finder(config[name])
             for _, name, _ in pkgutil.iter_modules([os.path.dirname(devices.__file__)]) if name != "device"]
 
         self._devices: typing.List[device.Device] = []

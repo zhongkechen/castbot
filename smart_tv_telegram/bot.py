@@ -230,13 +230,13 @@ class Bot(BotInterface):
 
         return user_data.selected_device
 
-    async def _reconstruct_playing_video(self, client, message_id, token, callback: CallbackQuery):
+    async def _reconstruct_playing_video(self, message_id, token, callback: CallbackQuery):
         # re-construct PlayVideo when the bot is restarted
         user_id = callback.from_user.id
         control_message = callback.message
-        video_message: Message = await client.get_messages(user_id, message_id)
+        video_message: Message = await self.get_message(message_id)
         if control_message.reply_to_message_id and control_message.reply_to_message_id != message_id:
-            link_message = await client.get_messages(user_id, control_message.reply_to_message_id)
+            link_message = await self.get_message(control_message.reply_to_message_id)
         else:
             link_message = None
 
@@ -249,14 +249,14 @@ class Bot(BotInterface):
                             control_message=control_message,
                             link_message=link_message)
 
-    async def _callback_handler(self, client: Client, message: CallbackQuery):
+    async def _callback_handler(self, _: Client, message: CallbackQuery):
         data = message.data
         _, message_id, token, payload = data.split(":")
         message_id = int(message_id)
         token = int(token)
         local_token = serialize_token(message_id, token)
         if local_token not in self._playing_videos:
-            self._playing_videos[local_token] = await self._reconstruct_playing_video(client, message_id, token, message)
+            self._playing_videos[local_token] = await self._reconstruct_playing_video(message_id, token, message)
 
         playing_video = self._playing_videos[local_token]
 
@@ -370,7 +370,7 @@ class Bot(BotInterface):
 
         message = messages.messages[0]
 
-        if not isinstance(message, Message):
+        if not isinstance(message, pyrogram.raw.types.Message):
             raise ValueError(f"expected `Message`, found: `{type(message).__name__}`")
 
         return message
