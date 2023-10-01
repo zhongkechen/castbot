@@ -25,8 +25,6 @@ __all__ = [
 
 
 class Mtproto:
-    _client: pyrogram.Client
-
     def __init__(self, config):
         self._session_name = str(config["session_name"])
         self._api_id = int(config["api_id"])

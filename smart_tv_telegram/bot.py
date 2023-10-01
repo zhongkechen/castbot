@@ -67,6 +67,13 @@ class PlayingVideo:
     def _gen_device_str(self):
         return f"on device <code>{html.escape(self.playing_device.get_device_name()) if self.playing_device else 'NONE'}</code>"
 
+    @classmethod
+    def parse_device_str(cls, text):
+        groups = re.search("on device ([^,]*)", text)
+        if not groups:
+            return None
+        return groups.group(1)
+
     def _gen_message_str(self):
         return f"for file <code>{self.video_message.id}</code>"
 
@@ -207,7 +214,7 @@ class Bot(OnStreamClosed):
         else:
             link_message = None
 
-        device = self._get_user_device(user_id)
+        device = await self._finders.find_device_by_name(PlayingVideo.parse_device_str(control_message.text)) or self._get_user_device(user_id)
         return PlayingVideo(self._http,
                             token,
                             user_id,
