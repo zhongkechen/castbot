@@ -285,8 +285,8 @@ class UpnpDeviceFinder(DeviceFinder):
         async def on_response(data: typing.Mapping[str, typing.Any]) -> None:
             location = data.get("LOCATION")
             if location not in found_locations:
-                devices.append(await factory.async_create_device(location))
                 found_locations.add(location)
+                devices.append(await factory.async_create_device(location))
 
         await async_search(search_target=_AVTRANSPORT_SCHEMA,
                            timeout=self._scan_timeout,
