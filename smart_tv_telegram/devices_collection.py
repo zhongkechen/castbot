@@ -30,13 +30,14 @@ class DeviceFinderCollection:
                 yield handler.get_method(), handler.get_path(), handler.handle
 
     async def refresh_all_devices(self):
-        self._devices = []
+        found_devices = []
         for finder in self._finders:
             try:
                 with async_timeout.timeout(self.device_request_timeout + 1):
-                    self._devices.extend(await finder.find())
+                    found_devices.extend(await finder.find())
             except asyncio.CancelledError:
                 pass
+        self._devices = found_devices
 
     async def find_device_by_name(self, device_name):
         if not self._devices:
