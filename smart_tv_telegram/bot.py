@@ -144,7 +144,11 @@ class PlayingVideo:
 
     async def stop(self):
         if self.playing_device:
-            await self.playing_device.stop()
+            try:
+                await self.playing_device.stop()
+            except Exception:
+                # make sure stop always succeeds even if the device is gone
+                traceback.print_exc()
         await self.send_stopped_control_message()
         if not self.playing_device:
             raise NoDeviceException
