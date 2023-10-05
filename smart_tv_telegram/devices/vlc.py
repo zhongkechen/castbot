@@ -88,15 +88,11 @@ class VlcDevice(Device):
 
 class VlcDeviceFinder(DeviceFinder):
     def __init__(self, config):
-        self._devices = config
-        if not isinstance(self._devices, list):
-            raise ValueError("vlc should be a list")
-
-        if not all(isinstance(x, dict) for x in self._devices):
-            raise ValueError("vlc should contain only dict")
+        super().__init__(config)
+        self._device_config = config
 
     async def find(self) -> typing.List[Device]:
-        return [VlcDevice(VlcDeviceParams(params)) for params in self._devices]
+        return [VlcDevice(VlcDeviceParams(self._device_config))]
 
 
 Finder = VlcDeviceFinder

@@ -19,8 +19,10 @@ from async_upnp_client.exceptions import UpnpError
 from async_upnp_client.search import async_search
 
 from ..device import Device, DeviceFinder, RoutersDefType, RequestHandler
+from ..utils import ConfigError
 
 __all__ = ["Finder"]
+
 
 _AVTRANSPORT_SCHEMA = "urn:schemas-upnp-org:service:AVTransport:1"
 
@@ -268,15 +270,16 @@ class UpnpDevice(Device):
 
 
 class UpnpDeviceFinder(DeviceFinder):
+    _init = False
+
     def __init__(self, config):
+        if self.__class__._init:
+            raise ConfigError("Multiple upnp devices specified in config")
+        self.__class__._init = True
+        super().__init__(config)
         self._notify_handler = UpnpNotifyServer()
-        self._enabled = bool(config["enabled"])
-        if self._enabled:
-            self._scan_timeout = int(config["scan_timeout"])
 
     async def find(self) -> typing.List[Device]:
-        if not self._enabled:
-            return []
         devices = []
         requester = AiohttpRequester()
         factory = UpnpFactory(requester)
@@ -289,14 +292,12 @@ class UpnpDeviceFinder(DeviceFinder):
                 devices.append(await factory.async_create_device(location))
 
         await async_search(search_target=_AVTRANSPORT_SCHEMA,
-                           timeout=self._scan_timeout,
+                           timeout=self.request_timeout,
                            async_callback=on_response)
 
         return [UpnpDevice(device, self._notify_handler) for device in devices]
 
     def get_routers(self) -> RoutersDefType:
-        if not self._enabled:
-            return []
         return [self._notify_handler]
 
 

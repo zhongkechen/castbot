@@ -51,6 +51,9 @@ class Device(abc.ABC):
 
 
 class DeviceFinder(abc.ABC):
+    def __init__(self, config):
+        self.request_timeout = int(config.get("request_timeout", 5))
+
     @abc.abstractmethod
     async def find(self) -> typing.List[Device]:
         raise NotImplementedError

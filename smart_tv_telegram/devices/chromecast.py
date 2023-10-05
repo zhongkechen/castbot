@@ -6,9 +6,9 @@ import typing
 import catt.api
 
 from ..device import Device, DeviceFinder
+from ..utils import ConfigError
 
 __all__ = ["Finder"]
-
 
 _EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
@@ -44,13 +44,16 @@ class ChromecastDevice(Device):
 
 
 class ChromecastDeviceFinder(DeviceFinder):
+    _init = False
+
     def __init__(self, config):
-        self._enabled = bool(config["enabled"])
+        if self.__class__._init:
+            raise ConfigError("Multiple chromecast devices specified in config")
+        self.__class__._init = True
+        super().__init__(config)
         self._devices_cache: typing.Dict[str, catt.api.CattDevice] = {}
 
     async def find(self) -> typing.List[Device]:
-        if not self._enabled:
-            return []
         found_devices: typing.List[catt.api.CattDevice] = await run_method_in_executor(catt.api.discover)
         cached_devices: typing.List[catt.api.CattDevice] = []
 

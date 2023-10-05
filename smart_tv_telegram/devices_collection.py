@@ -15,11 +15,10 @@ __all__ = [
 
 class DeviceFinderCollection:
     def __init__(self, config):
-        self.device_request_timeout = int(config.get("device_request_timeout", 10))
-        self._finders: typing.List[device.DeviceFinder] = [
-            importlib.import_module("." + name, "smart_tv_telegram.devices").Finder(config[name])
-            for _, name, _ in pkgutil.iter_modules([os.path.dirname(devices.__file__)]) if name != "device"]
-
+        self._finder_classes: typing.Dict[str, device.DeviceFinder.__class__] = {
+            name: importlib.import_module("." + name, "smart_tv_telegram.devices").Finder
+            for _, name, _ in pkgutil.iter_modules([os.path.dirname(devices.__file__)]) if name != "device"}
+        self._finders = [self._finder_classes[device_config["type"]](device_config) for device_config in config]
         self._devices: typing.List[device.Device] = []
 
     def get_all_routers(self):
@@ -29,15 +28,18 @@ class DeviceFinderCollection:
             for handler in routers:
                 yield handler.get_method(), handler.get_path(), handler.handle
 
+    @staticmethod
+    async def _refresh_one_finder(finder):
+        try:
+            with async_timeout.timeout(finder.request_timeout + 1):
+                return await finder.find()
+        except asyncio.CancelledError:
+            pass
+
     async def refresh_all_devices(self):
-        found_devices = []
-        for finder in self._finders:
-            try:
-                with async_timeout.timeout(self.device_request_timeout + 1):
-                    found_devices.extend(await finder.find())
-            except asyncio.CancelledError:
-                pass
-        self._devices = found_devices
+        find_devices = [self._refresh_one_finder(finder) for finder in self._finders]
+        found_devices = await asyncio.gather(*find_devices)
+        self._devices = [d for devices in found_devices for d in devices if d]
 
     async def find_device_by_name(self, device_name):
         if not self._devices:

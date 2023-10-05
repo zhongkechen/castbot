@@ -12,7 +12,7 @@ from pyrogram.raw.types import MessageMediaDocument, Document, DocumentAttribute
 from pyrogram.types import Message
 
 from . import DeviceFinderCollection
-from .tools import serialize_token
+from .utils import serialize_token
 
 __all__ = [
     "Http",

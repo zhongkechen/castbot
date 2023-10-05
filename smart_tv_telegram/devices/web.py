@@ -5,7 +5,7 @@ from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 
 from ..device import DeviceFinder, RoutersDefType, Device, RequestHandler
-from ..tools import secret_token
+from ..utils import secret_token
 
 __all__ = ["Finder"]
 
@@ -109,16 +109,13 @@ class WebDeviceFinder(DeviceFinder):
     _devices: typing.Dict[int, WebDevice]
 
     def __init__(self, config):
+        super().__init__(config)
         self._devices = {}
-        self._enabled = bool(config["enabled"])
-        self._request_timeout = int(config.get("request_timeout", 10))
         self._password = str(config.get("password", ""))
 
     async def find(self) -> typing.List[Device]:
-        if not self._enabled:
-            return []
         devices = list(self._devices.values())
-        min_timestamp = time.time() - self._request_timeout
+        min_timestamp = time.time() - self.request_timeout
 
         for device in devices:
             if device.manipulate_timestamp() < min_timestamp:
@@ -127,8 +124,6 @@ class WebDeviceFinder(DeviceFinder):
         return list(self._devices.values())
 
     def get_routers(self) -> RoutersDefType:
-        if not self._enabled:
-            return []
         return [
             WebDeviceApiRequestRegisterDevice(self._password, self._devices),
             WebDeviceApiRequestPoll(self._devices)

@@ -30,7 +30,8 @@ from pyrogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineK
 
 from . import Http, BotInterface, DeviceFinderCollection
 from .device import Device
-from .tools import secret_token, serialize_token
+from .utils import secret_token, serialize_token, NoDeviceException, ActionNotSupportedException, \
+    UnknownCallbackException
 
 __all__ = [
     "Bot"
@@ -44,22 +45,6 @@ class UserData:
 
     def __init__(self, selected_device):
         self.selected_device = selected_device
-
-
-class NoDeviceException(Exception):
-    pass
-
-
-class ActionNotSupportedException(Exception):
-    pass
-
-
-class UnknownCallbackException(Exception):
-    pass
-
-
-class ConfigError(Exception):
-    pass
 
 
 class PlayingVideo:

@@ -136,15 +136,11 @@ class XbmcDevice(Device):
 
 class XbmcDeviceFinder(DeviceFinder):
     def __init__(self, config):
-        self._devices = config
-        if not isinstance(self._devices, list):
-            raise ValueError("xbmc_devices should be a list")
-
-        if not all(isinstance(x, dict) for x in self._devices):
-            raise ValueError("xbmc_devices should contain only dict")
+        super().__init__(config)
+        self._device_config = config
 
     async def find(self) -> typing.List[Device]:
-        return [XbmcDevice(XbmcDeviceParams(params)) for params in self._devices]
+        return [XbmcDevice(XbmcDeviceParams(self._device_config))]
 
 
 Finder = XbmcDeviceFinder
