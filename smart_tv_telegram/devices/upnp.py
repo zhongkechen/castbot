@@ -270,12 +270,9 @@ class UpnpDevice(Device):
 
 
 class UpnpDeviceFinder(DeviceFinder):
-    _init = False
+    singleton = True
 
     def __init__(self, config):
-        if self.__class__._init:
-            raise ConfigError("Multiple upnp devices specified in config")
-        self.__class__._init = True
         super().__init__(config)
         self._notify_handler = UpnpNotifyServer()
 

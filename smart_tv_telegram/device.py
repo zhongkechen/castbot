@@ -4,6 +4,8 @@ import typing
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 
+from smart_tv_telegram.utils import ConfigError
+
 
 class RequestHandler(abc.ABC):
     @abc.abstractmethod
@@ -51,8 +53,17 @@ class Device(abc.ABC):
 
 
 class DeviceFinder(abc.ABC):
+    singleton = False
+    device_finder = {}
+
     def __init__(self, config):
         self.request_timeout = int(config.get("request_timeout", 5))
+        if self.singleton:
+            cls = self.__class__
+            if cls.__name__ not in self.device_finder:
+                self.device_finder[cls.__name__] = self
+            else:
+                raise ConfigError("Multiple chromecast devices specified in config")
 
     @abc.abstractmethod
     async def find(self) -> typing.List[Device]:

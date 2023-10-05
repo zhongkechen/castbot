@@ -106,7 +106,7 @@ class WebDeviceApiRequestPoll(RequestHandler):
 
 
 class WebDeviceFinder(DeviceFinder):
-    _devices: typing.Dict[int, WebDevice]
+    singleton = True
 
     def __init__(self, config):
         super().__init__(config)

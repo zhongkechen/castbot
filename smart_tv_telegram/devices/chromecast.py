@@ -44,12 +44,9 @@ class ChromecastDevice(Device):
 
 
 class ChromecastDeviceFinder(DeviceFinder):
-    _init = False
+    singleton = True
 
     def __init__(self, config):
-        if self.__class__._init:
-            raise ConfigError("Multiple chromecast devices specified in config")
-        self.__class__._init = True
         super().__init__(config)
         self._devices_cache: typing.Dict[str, catt.api.CattDevice] = {}
 
