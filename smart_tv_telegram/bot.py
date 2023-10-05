@@ -271,18 +271,18 @@ class Bot(BotInterface):
                 await self._finders.refresh_all_devices()
             return await playing_video.select_device(await self._finders.list_all_devices())
 
-        async with async_timeout.timeout(self._finders.device_request_timeout) as timeout_context:
-            if action == "PLAY":
-                self._http.add_remote_token(playing_video.video_message.id, playing_video.token)
-                await playing_video.play()
-            elif action == "STOP":
-                await playing_video.stop()
-            elif action == "PAUSE":
-                await playing_video.pause()
-            elif action == "RESUME":
-                await playing_video.resume()
-        if timeout_context.expired:
-            await message.answer("Timeout while communicate with the device")
+        # async with async_timeout.timeout(self._finders.device_request_timeout) as timeout_context:
+        if action == "PLAY":
+            self._http.add_remote_token(playing_video.video_message.id, playing_video.token)
+            await playing_video.play()
+        elif action == "STOP":
+            await playing_video.stop()
+        elif action == "PAUSE":
+            await playing_video.pause()
+        elif action == "RESUME":
+            await playing_video.resume()
+        #if timeout_context.expired:
+        #    await message.answer("Timeout while communicate with the device")
 
     async def _callback_select_device(self, playing_video, device_name, message: CallbackQuery):
         device = await self._finders.find_device_by_name(device_name)
