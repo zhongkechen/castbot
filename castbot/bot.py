@@ -311,11 +311,17 @@ class Bot(BotInterface):
                                             reply_to_message_id=message.id,
                                             disable_web_page_preview=True)
         try:
-            async with self._downloader.download(url) as output_filename:
+            async with self._downloader.download(url) as (output_filename, thumbnail_filename, title, width, height):
                 file_stats = os.stat(output_filename)
                 await reply_message.edit_text(f"Download completed. Uploading video (size={file_stats.st_size})")
                 reader = open(output_filename, mode='rb')
-                video_message = await message.reply_video(reader, reply_to_message_id=message.id)
+                video_message = await message.reply_video(reader,
+                                                          quote=True,
+                                                          caption=title or "",
+                                                          width=width or 0,
+                                                          height=height or 0,
+                                                          thumb=thumbnail_filename,
+                                                          reply_to_message_id=message.id)
             await reply_message.edit_text("Upload completed.")
             await self._new_document(client, video_message, link_message=message, control_message=reply_message)
         except Exception as e:
