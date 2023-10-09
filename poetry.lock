@@ -1359,21 +1359,6 @@ files = [
 socks = ["PySocks"]
 
 [[package]]
-name = "youtube-dl"
-version = "2021.12.17"
-description = "YouTube video downloader"
-optional = false
-python-versions = "*"
-files = []
-develop = false
-
-[package.source]
-type = "git"
-url = "https://github.com/ytdl-org/youtube-dl.git"
-reference = "HEAD"
-resolved_reference = "00ef748cc0e35ee60efd0f7a00e373ab8d1af86b"
-
-[[package]]
 name = "yt-dlp"
 version = "2023.10.7"
 description = "A youtube-dl fork with additional features and patches"
@@ -1468,4 +1453,4 @@ ifaddr = ">=0.1.7"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "a7f82beea4650807dcd393ca30e72362afae17b009c95b1b9af57f6f27b7caae"
+content-hash = "294a24a91f006531497a95fc6f5a29ab29e2f2d20a9d7c6579d07290f137c2c0"
