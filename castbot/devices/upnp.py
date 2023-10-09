@@ -19,7 +19,6 @@ from async_upnp_client.exceptions import UpnpError
 from async_upnp_client.search import async_search
 
 from ..device import Device, DeviceFinder, RoutersDefType, RequestHandler
-from ..utils import ConfigError
 
 __all__ = ["Finder"]
 

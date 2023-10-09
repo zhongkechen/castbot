@@ -16,6 +16,6 @@ COPY . .
 
 RUN /root/.local/bin/poetry install
 
-HEALTHCHECK CMD ["smart_tv_telegram", "--healthcheck"]
+HEALTHCHECK CMD ["castbot", "--healthcheck"]
 
-CMD ["smart_tv_telegram"]
+CMD ["castbot"]

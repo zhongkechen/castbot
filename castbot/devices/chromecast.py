@@ -6,7 +6,6 @@ import typing
 import catt.api
 
 from ..device import Device, DeviceFinder
-from ..utils import ConfigError
 
 __all__ = ["Finder"]
 

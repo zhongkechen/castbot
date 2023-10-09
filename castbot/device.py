@@ -4,7 +4,7 @@ import typing
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 
-from smart_tv_telegram.utils import ConfigError
+from castbot.utils import ConfigError
 
 
 class RequestHandler(abc.ABC):

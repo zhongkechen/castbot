@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "smart-tv-telegram"
+name = "castbot"
 version = "1.4.0"
-description = ""
+description = "A Telegram Bot to stream contents (Telegram videos, Youtube videos and more) to your smart TV"
 authors = ["Zhongke Chen <github@ch3n2k.com>"]
 readme = "README.md"
 
@@ -39,7 +39,7 @@ youtube-dl = { git = "https://github.com/ytdl-org/youtube-dl.git" }
 toml = {version="^0.10", python="<3.11"}
 
 [tool.poetry.scripts]
-smart_tv_telegram = "smart_tv_telegram.__main__:entry_point"
+castbot = "castbot.__main__:entry_point"
 
 [build-system]
 requires = ["poetry-core"]

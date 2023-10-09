@@ -16,7 +16,7 @@ __all__ = [
 class DeviceFinderCollection:
     def __init__(self, config):
         self._finder_classes: typing.Dict[str, device.DeviceFinder.__class__] = {
-            name: importlib.import_module("." + name, "smart_tv_telegram.devices").Finder
+            name: importlib.import_module("." + name, "castbot.devices").Finder
             for _, name, _ in pkgutil.iter_modules([os.path.dirname(devices.__file__)]) if name != "device"}
         self._finders = [self._finder_classes[device_config["type"]](device_config) for device_config in config]
         self._devices: typing.List[device.Device] = []

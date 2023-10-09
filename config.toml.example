@@ -4,7 +4,7 @@ downloader = "youtube-dl"
 api_id=6
 api_hash="eb06d4abfb49dc3eeb1aeb98ae0f581e"
 token="xxxxxxxxx"
-session_name="smart_tv_telegram"
+session_name="castbot"
 file_fake_fw_wait=0.2
 admins=[337885031,32432424,44353421]
 

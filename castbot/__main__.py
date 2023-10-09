@@ -11,7 +11,7 @@ except ImportError:
 import traceback
 import urllib.request
 
-from smart_tv_telegram import Http, Bot, DeviceFinderCollection, Downloader
+from castbot import Http, Bot, DeviceFinderCollection, Downloader
 
 
 def open_config(parser: argparse.ArgumentParser, arg: str):
@@ -28,8 +28,6 @@ def open_config(parser: argparse.ArgumentParser, arg: str):
         parser.error(str(err))
     except KeyError as err:
         parser.error(f"config key {str(err)} does not exists")
-
-    return None
 
 
 async def async_main(config):

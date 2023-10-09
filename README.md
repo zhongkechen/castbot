@@ -1,4 +1,4 @@
-# smart-tv-telegram
+# CastBot
 
 A Telegram Bot to stream contents (Telegram videos, Youtube videos and more) to your smart TV
 
@@ -30,12 +30,12 @@ Make sure you have an updated version of python, only the latest version will be
 # install poetry
 curl -sSL https://install.python-poetry.org | python3 -
 
-git clone https://github.com/andrew-ld/smart-tv-telegram
-cd smart-tv-telegram
+git clone https://github.com/zhongkechen/castbot
+cd castbot
 poetry install
 cp config.toml.example config.toml
 nano config.toml
-poetry run smart_tv_telegram -c config.toml -v 1
+poetry run castbot -c config.toml -v 1
 ```
 
 ## How-to setup (Docker)
@@ -47,8 +47,8 @@ poetry run smart_tv_telegram -c config.toml -v 1
 ```bash
 cp config.toml.example config.toml
 nano config.toml
-docker image build -t smart-tv-telegram:latest .
-docker run --network host -v "$(pwd)/config.ini:/app/config.ini:ro" -d smart-tv-telegram:latest
+docker image build -t castbot:latest .
+docker run --network host -v "$(pwd)/config.toml:/app/config.toml:ro" -d castbot:latest
 ```
 
 ## FAQ
