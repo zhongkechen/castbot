@@ -3,7 +3,9 @@
 A Telegram Bot to stream contents (Telegram videos, Youtube videos and more) to your smart TV
 
 [![flake8](https://github.com/zhongkechen/castbot/actions/workflows/flake8.yml/badge.svg)](https://github.com/zhongkechen/castbot/actions/workflows/flake8.yml)
+[![pylint](https://github.com/zhongkechen/castbot/actions/workflows/pylint.yml/badge.svg)](https://github.com/zhongkechen/castbot/actions/workflows/pylint.yml)
 [![Docker](https://github.com/zhongkechen/castbot/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/zhongkechen/castbot/actions/workflows/docker-publish.yml)
+[![Upload Python Package](https://github.com/zhongkechen/castbot/actions/workflows/python-publish.yml/badge.svg)](https://github.com/zhongkechen/castbot/actions/workflows/python-publish.yml)
 
 ### Demonstration video
 [![poc](https://i.ibb.co/ct8Qb3z/Screenshot-20200827-200637.png)](https://player.vimeo.com/video/452289383)
