@@ -21,95 +21,79 @@ A Telegram Bot to stream contents (Telegram videos, Youtube videos and more) to 
 
 - Chromecast (1st, 2nd and 3rd Gen.) [only supports H.264 and VP8 video codecs](https://developers.google.com/cast/docs/media#video_codecs)
 - Most LG TVs with WebOS have an incorrect UPnP implementation
+- This bot supports videos of ~4.5Mb/s bit rate at maximum. The videos of higher bit rate would keep freezing.
 
-## How-to setup (Release from pypi)
-Make sure you have an updated version of python, only the latest version will be supported
+## How to run castbot with pip
 
-- Install Poetry if it's not installed yet
-- Clone the repository
-- Install python dependencies
-- Copy config.ini.example to config.ini
-- Edit config.ini
-- Start from python entrypoint
+Create a configuration file `config.toml` and then run the following command
 
 ```bash
-# install poetry
-curl -sSL https://install.python-poetry.org | python3 -
-
-git clone https://github.com/zhongkechen/castbot
-cd castbot
-poetry install
-cp config.toml.example config.toml
-nano config.toml
-poetry run castbot -c config.toml -v 1
+pip install castbot
+castbot -c config.toml -v 1
 ```
 
-## How-to setup (Docker)
-- Copy config.ini.example to config.ini
-- Edit config.ini
-- Build Docker image
-- Start Docker container
+Note: Make sure you have a version of Python 3.8+
+
+## How to run castbot with Docker
+
+Create a configuration file `config.toml` and then run the following command
 
 ```bash
-cp config.toml.example config.toml
-nano config.toml
-docker image build -t castbot:latest .
-docker run --network host -v "$(pwd)/config.toml:/app/config.toml:ro" -d castbot:latest
+docker run --network host -v "$(pwd)/config.toml:/app/config.toml:ro" -d ghcr.io/zhongkechen/castbot:master
 ```
 
-## FAQ
+## How to config
 
-**Q:** How do I use the web interface?
+Create a file `config.toml` with the following content
 
-**A:** Set `enabled` to `1` in `web_ui` config block, and change the `password`
+```toml
+downloader = "yt-dlp"                     # Use yt-dlp or you-get to download Youtube videos
 
-- open http://`listen_ip`:`listen_port`/static/index.html
+[bot]
+api_id=652324                             # `api_id` and `api_hash` can be generated here: 
+api_hash="eb06d4abfb49dc3eeb1aeb9f581e"   # https://core.telegram.org/api/obtaining_api_id
+token="xxxxxxxxx"                         # `token` can be created from https://telegram.me/BotFather
+session_name="castbot"                    # `session_name` can be an arbitary string.
+admins=[337885031,32432424,44353421]      # Only users in this `admins` list can use this bot. 
+                                          # Your own user id can be found from https://telegram.me/getuseridbot
 
-- now if you send a video in the bot on telegram you can choose to play it in the browser
+[http]
+listen_host = "192.168.1.2"               # The IP address or the hostname of the host running castbot
+listen_port = 8350                        # An arbitary port that is not in use
 
-##
-**Q:** My Firewall block upnp and broadcasting, how can use kodi without it
+# The following devices sections are optional. Add the sections you need.
 
-**A:** Set `xbmc_enabled` to `1` and add your kodi device to `xbmc_devices` list
+[[devices]]
+# When this section is added, all the UPNP devices in the local network will be auto-discovered.
+# For Kodi, UPNP must be enabled in Settings -> Services -> UPNP/DLNA
+# https://kodi.wiki/view/Settings/Services/UPnP_DLNA
+type="upnp"
 
-##
-**Q:** What is the format of `xbmc_devices`
+[[devices]]
+# When this section is added, all the ChromeCast devices in the local network will be auto-discovered.
+type="chromecast"
 
-**A:** A List of Python Dict with `host`, `port`, (and optional: `username` and `password`)
+[[devices]]
+# When this section is added, open http://`listen_host`:`listen_port`/static/index.html in a browser.
+# Now if you send a video to the bot, you can choose to play it in the browser
+type="web"
+password="changeit"
 
-**example:** `[{"host": "192.168.1.2", "port": 8080, "username": "pippo", "password": "pluto"}]`
+[[devices]]
+# When this section is added, we can play video on a device running VLC.
+# VLC Telnet interface must be enabled.
+type="vlc"
+host = "127.0.0.1"
+port = 4212
+password = "123"
 
-##
-**Q:** How-To control vlc from this bot
-
-**A:** set `vlc_enabled` to `1` and add your vlc device to `vlc_devices` list
-
-##
-**Q:** What is the format of `vlc_devices`
-
-**A:** A List of Python Dict with `host`, `port`, (and optional: `password`)
-
-**example:** `[{"host": "127.0.0.1", "port": 4212, "password": "123"}]`
-
-
-##
-**Q:** How-To enable upnp on my device that use kodi
-
-**A:** follow [this guide](https://kodi.wiki/view/Settings/Services/UPnP_DLNA) (you should enable remote control)
-
-##
-**Q:** How do I get a token?
-
-**A:** From [@BotFather](https://telegram.me/BotFather)
-##
-**Q:** How do I set up admins?
-
-**A:** You have to enter your user_id, there are many ways to get it, the easiest is to use [@getuseridbot](https://telegram.me/getuseridbot)
-##
-**Q:** How do I get an app_id and app_hash?
-
-**A:** https://core.telegram.org/api/obtaining_api_id#obtaining-api-id
-##
-**Q:** The video keeps freezing
-
-**A:** Check the video bitrate, this bot supports maximum ~4.5Mb/s
+[[devices]]
+# When UPNP is blocked by firewall, we can use this section to connect to Kodi.
+# Remote Control of Kodi must be enabled: Settings -> Services -> Control.
+# https://kodi.wiki/view/Settings/Services/Control
+type="xbmc"
+host = "192.168.42.140"
+port = 8080
+username = ""
+password = ""
+```

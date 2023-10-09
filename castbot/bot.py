@@ -173,7 +173,7 @@ class Bot(BotInterface):
         self._api_id = int(config["api_id"])
         self._api_hash = str(config["api_hash"])
         self._token = str(config["token"])
-        self._file_fake_fw_wait = float(config["file_fake_fw_wait"])
+        self._file_fake_fw_wait = float(config.get("file_fake_fw_wait", 0.2))
         self._client = pyrogram.Client(self._session_name,
                                        self._api_id,
                                        self._api_hash,

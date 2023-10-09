@@ -123,8 +123,8 @@ class Http:
     def __init__(self, config, finders: DeviceFinderCollection):
         self._listen_port = int(config["listen_port"])
         self._listen_host = str(config["listen_host"])
-        self._request_gone_timeout = int(config["request_gone_timeout"])
-        self._block_size = int(config["block_size"])
+        self._request_gone_timeout = int(config.get("request_gone_timeout", 900))
+        self._block_size = int(config.get("block_size", 1048576))
         self._finders = finders
 
         self._tokens: typing.Set[int] = set()
