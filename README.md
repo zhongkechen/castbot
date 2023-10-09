@@ -47,19 +47,33 @@ docker run --network host -v "$(pwd)/config.toml:/app/config.toml:ro" -d ghcr.io
 Create a file `config.toml` with the following content
 
 ```toml
-downloader = "yt-dlp"                     # Use yt-dlp or you-get to download Youtube videos
+# Use yt-dlp or you-get to download Youtube videos
+downloader = "yt-dlp"
 
 [bot]
-api_id=652324                             # `api_id` and `api_hash` can be generated here: 
-api_hash="eb06d4abfb49dc3eeb1aeb9f581e"   # https://core.telegram.org/api/obtaining_api_id
-token="xxxxxxxxx"                         # `token` can be created from https://telegram.me/BotFather
-session_name="castbot"                    # `session_name` can be an arbitary string.
-admins=[337885031,32432424,44353421]      # Only users in this `admins` list can use this bot. 
-                                          # Your own user id can be found from https://telegram.me/getuseridbot
+
+# `api_id` and `api_hash` can be generated here: https://core.telegram.org/api/obtaining_api_id
+api_id=652324
+api_hash="eb06d4abfb49dc3eeb1aeb9f581e"
+
+# `token` can be created from https://telegram.me/BotFather
+token="xxxxxxxxx"
+
+# `session_name` can be an arbitary string.
+session_name="castbot"
+
+# Only users in this `admins` list can use this bot. 
+# Your own user id can be found here https://telegram.me/getuseridbot
+admins=[337885031,32432424,44353421]
 
 [http]
-listen_host = "192.168.1.2"               # The IP address or the hostname of the host running castbot
-listen_port = 8350                        # An arbitary port that is not in use
+
+# The IP address or the hostname of the host running castbot
+listen_host = "192.168.1.2"
+
+# An arbitary port that is not in use
+listen_port = 8350
+
 
 # The following devices sections are optional. Add the sections you need.
 

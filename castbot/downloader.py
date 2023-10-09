@@ -12,7 +12,7 @@ class Downloader:
     @contextlib.asynccontextmanager
     async def download(self, url):
         with tempfile.TemporaryDirectory() as tmpdir:
-            if self._downloader == "youtube-dl":
+            if self._downloader == "yt-dlp":
                 output_filename = os.path.join(tmpdir, "video1.mp4")
                 process = await asyncio.create_subprocess_shell(
                     f"yt-dlp -v -f mp4 -o {output_filename} '{url}'")

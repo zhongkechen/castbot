@@ -2,19 +2,23 @@ FROM python:3.11
 
 ENV PYTHONUNBUFFERED=1
 ENV POETRY_VIRTUALENVS_CREATE=0
+#ENV CRYPTOGRAPHY_DONT_BUILD_RUST=1
+#ENV PATH="/root/.cargo/bin:${PATH}"
 
-RUN apt-get update && apt-get install -y ffmpeg rustc && apt-get clean && rm -rf /var/lib/apt/lists/*
-RUN python -m pip install --upgrade pip && python -m pip install poetry
+#RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+RUN apt-get update && apt-get install -y ffmpeg && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN curl -sSL https://install.python-poetry.org | python -
+# RUN python -m pip install --upgrade pip poetry
 
 WORKDIR /app
 
 COPY pyproject.toml poetry.lock /app/
 
-RUN poetry install
+RUN /root/.local/bin/poetry install
 
 COPY . .
 
-RUN poetry install
+RUN /root/.local/bin/poetry install
 
 HEALTHCHECK CMD ["castbot", "--healthcheck"]
 

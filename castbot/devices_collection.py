@@ -44,7 +44,7 @@ class DeviceFinderCollection:
     async def find_device_by_name(self, device_name):
         if not self._devices:
             await self.refresh_all_devices()
-        found_devices = [d for d in self._devices if repr(device) == device_name]
+        found_devices = [d for d in self._devices if repr(d) == device_name]
         return found_devices[0] if found_devices else None
 
     async def list_all_devices(self):
