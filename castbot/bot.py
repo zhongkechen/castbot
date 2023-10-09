@@ -9,7 +9,6 @@ import re
 import traceback
 import typing
 
-import async_timeout
 import pyrogram
 import pyrogram.session
 from async_lru import alru_cache
@@ -229,7 +228,8 @@ class Bot(BotInterface):
         else:
             link_message = None
 
-        device = await self._finders.find_device_by_name(PlayingVideo.parse_device_str(control_message.text)) or self._get_user_device(user_id)
+        device = (await self._finders.find_device_by_name(PlayingVideo.parse_device_str(control_message.text))
+                  or self._get_user_device(user_id))
         return PlayingVideo(self._http,
                             token,
                             user_id,
@@ -281,7 +281,7 @@ class Bot(BotInterface):
             await playing_video.pause()
         elif action == "RESUME":
             await playing_video.resume()
-        #if timeout_context.expired:
+        # if timeout_context.expired:
         #    await message.answer("Timeout while communicate with the device")
 
     async def _callback_select_device(self, playing_video, device_name, message: CallbackQuery):
@@ -316,7 +316,7 @@ class Bot(BotInterface):
                 await reply_message.edit_text(f"Download completed. Uploading video (size={file_stats.st_size})")
                 reader = open(output_filename, mode='rb')
                 video_message = await message.reply_video(reader, reply_to_message_id=message.id)
-            await reply_message.edit_text(f"Upload completed.")
+            await reply_message.edit_text("Upload completed.")
             await self._new_document(client, video_message, link_message=message, control_message=reply_message)
         except Exception as e:
             await reply_message.edit_text(f"Exception thrown {e} when downloading {url}: {traceback.format_exc()}")
