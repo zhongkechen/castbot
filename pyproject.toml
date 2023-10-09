@@ -42,6 +42,7 @@ toml = {version="^0.10", python="<3.11"}
 pyproject-flake8 = "^6.1"
 pylint = "^3.0.1"
 mypy = "1.5.1"
+types-toml = "^0.10"
 
 [tool.flake8]
 max-line-length = 140
