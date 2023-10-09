@@ -48,14 +48,12 @@ class UserData:
 
 class PlayingVideo:
     def __init__(self,
-                 http: Http,
                  token: int,
                  user_id: int,
                  video_message: typing.Optional[Message] = None,
                  playing_device: typing.Optional[Device] = None,
                  control_message: typing.Optional[Message] = None,
                  link_message: typing.Optional[Message] = None):
-        self._http = http
         self.token = token
         self.user_id = user_id
         self.video_message = video_message
@@ -64,7 +62,8 @@ class PlayingVideo:
         self.link_message = link_message
 
     def _gen_device_str(self):
-        return f"on device <code>{html.escape(self.playing_device.get_device_name()) if self.playing_device else 'NONE'}</code>"
+        return (f"on device <code>"
+                f"{html.escape(self.playing_device.get_device_name()) if self.playing_device else 'NONE'}</code>")
 
     @classmethod
     def parse_device_str(cls, text):
@@ -109,11 +108,11 @@ class PlayingVideo:
         else:
             self.control_message = await self.video_message.reply(text, reply_markup=InlineKeyboardMarkup(buttons))
 
-    async def play(self):
+    async def play(self, http: Http):
         if not self.playing_device:
             raise NoDeviceException
 
-        uri = self._http.build_streaming_uri(self.video_message.id, self.token)
+        uri = http.build_streaming_uri(self.video_message.id, self.token)
         local_token = serialize_token(self.video_message.id, self.token)
 
         try:
@@ -143,8 +142,7 @@ class PlayingVideo:
         if hasattr(self.playing_device, "pause"):
             await self.playing_device.pause()
             return await self.send_paused_control_message()
-        else:
-            raise ActionNotSupportedException
+        raise ActionNotSupportedException
 
     async def resume(self):
         if not self.playing_device:
@@ -152,8 +150,7 @@ class PlayingVideo:
         if hasattr(self.playing_device, "resume"):
             await self.playing_device.resume()
             return await self.send_playing_control_message()
-        else:
-            raise ActionNotSupportedException
+        raise ActionNotSupportedException
 
     async def select_device(self, devices):
         buttons = [[self._gen_device_button(d)] for d in devices] + [[self._gen_command_button("REFRESH")]]
@@ -161,10 +158,10 @@ class PlayingVideo:
 
 
 def pyrogram_filename(message: Message) -> str:
-    _NAMED_MEDIA_TYPES = ("document", "video", "audio", "video_note", "animation")
+    named_media_types = ("document", "video", "audio", "video_note", "animation")
     try:
         return next(
-            getattr(message, t, None).file_name for t in _NAMED_MEDIA_TYPES if getattr(message, t, None) is not None
+            getattr(message, t, None).file_name for t in named_media_types if getattr(message, t, None) is not None
         )
     except StopIteration as error:
         raise TypeError() from error
@@ -214,7 +211,7 @@ class Bot(BotInterface):
     def _get_user_device(self, user_id):
         user_data = self._user_data.get(user_id)
         if not user_data or not user_data.selected_device:
-            return
+            return None
 
         return user_data.selected_device
 
@@ -230,8 +227,7 @@ class Bot(BotInterface):
 
         device = (await self._finders.find_device_by_name(PlayingVideo.parse_device_str(control_message.text))
                   or self._get_user_device(user_id))
-        return PlayingVideo(self._http,
-                            token,
+        return PlayingVideo(token,
                             user_id,
                             video_message=video_message,
                             playing_device=device,
@@ -251,7 +247,8 @@ class Bot(BotInterface):
 
         if data.startswith("s:"):
             return await self._callback_select_device(playing_video, payload, message)
-        elif data.startswith("c:"):
+
+        if data.startswith("c:"):
             try:
                 return await self._callback_control_playback(playing_video, payload, message)
             except NoDeviceException:
@@ -262,8 +259,8 @@ class Bot(BotInterface):
                 traceback.print_exc()
 
                 await message.answer(f"Unknown exception: {ex.__class__.__name__}")
-        else:
-            raise UnknownCallbackException
+
+        raise UnknownCallbackException
 
     async def _callback_control_playback(self, playing_video, action, message: CallbackQuery):
         if action in ["DEVICE", "REFRESH"]:
@@ -274,13 +271,17 @@ class Bot(BotInterface):
         # async with async_timeout.timeout(self._finders.device_request_timeout) as timeout_context:
         if action == "PLAY":
             self._http.add_remote_token(playing_video.video_message.id, playing_video.token)
-            await playing_video.play()
+            await playing_video.play(self._http)
+            await message.answer("Playing")
         elif action == "STOP":
             await playing_video.stop()
+            await message.answer("Stopped")
         elif action == "PAUSE":
             await playing_video.pause()
+            await message.answer("Paused")
         elif action == "RESUME":
             await playing_video.resume()
+            await message.answer("Resumed")
         # if timeout_context.expired:
         #    await message.answer("Timeout while communicate with the device")
 
@@ -299,7 +300,7 @@ class Bot(BotInterface):
         token = secret_token()
         local_token = serialize_token(video_message.id, token)
 
-        self._playing_videos[local_token] = PlayingVideo(self._http, token, user_id,
+        self._playing_videos[local_token] = PlayingVideo(token, user_id,
                                                          video_message=video_message,
                                                          playing_device=device,
                                                          control_message=control_message,

@@ -23,11 +23,11 @@ def open_config(parser: argparse.ArgumentParser, arg: str):
     try:
         return tomllib.load(open(arg, "rb"))
     except tomllib.TOMLDecodeError as err:
-        parser.error(f"config file parsing error:\n{str(err)}")
+        return parser.error(f"config file parsing error:\n{str(err)}")
     except ValueError as err:
-        parser.error(str(err))
+        return parser.error(str(err))
     except KeyError as err:
-        parser.error(f"config key {str(err)} does not exists")
+        return parser.error(f"config key {str(err)} does not exists")
 
 
 async def async_main(config):

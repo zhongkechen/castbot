@@ -42,6 +42,37 @@ toml = {version="^0.10", python="<3.11"}
 flake8 = "^5.0.4"
 pylint = "^3.0.1"
 
+[tool.pylint.design]
+max-args = 7
+max-attributes=30
+min-public-methods=0
+max-locals=30
+max-statements=100
+max-branches=100
+max-returns=15
+max-public-methods=25
+
+[tool.pylint.format]
+expected-line-ending-format="LF"
+ignore-long-lines="^\\s*(# )?<?https?://\\S+>?$"
+indent-after-paren=4
+indent-string='    '
+max-line-length=120
+
+[tool.pylint."Message Control"]
+disable = [
+    "missing-function-docstring",
+    "missing-module-docstring",
+    "invalid-overridden-method",
+    "cyclic-import",
+    "missing-class-docstring",
+    "super-init-not-called",
+    "broad-except",
+    "protected-access",
+    "duplicate-code",
+    "consider-using-with"
+]
+
 [tool.poetry.scripts]
 castbot = "castbot.__main__:entry_point"
 

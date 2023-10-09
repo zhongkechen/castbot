@@ -13,7 +13,7 @@ from ..device import Device, DeviceFinder
 __all__ = ["Finder"]
 
 _LOGGER = logging.getLogger(__name__)
-_ARGTYPE = typing.Union[typing.AnyStr, int, bool]
+ArgType = typing.Union[typing.AnyStr, int, bool]
 
 _JSON_HEADERS = {"content-type": "application/json"}
 _JSONRPC_VERSION = "2.0"
@@ -75,7 +75,7 @@ class XbmcDevice(Device):
     async def on_close(self, local_token: int):
         pass
 
-    async def _call(self, method: str, **args: typing.Union[_ARGTYPE, typing.Mapping[str, _ARGTYPE]]):
+    async def _call(self, method: str, **args: typing.Union[ArgType, typing.Mapping[str, ArgType]]):
         data = {
             _ATTR_JSONRPC: _JSONRPC_VERSION,
             _ATTR_METHOD: method,
