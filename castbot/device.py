@@ -53,7 +53,7 @@ class Device(abc.ABC):
 
 class DeviceFinder(abc.ABC):
     singleton = False
-    device_finder = {}
+    device_finder: typing.Dict[str, "DeviceFinder"] = {}
 
     def __init__(self, config):
         self.request_timeout = int(config.get("request_timeout", 5))

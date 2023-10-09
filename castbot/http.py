@@ -8,8 +8,7 @@ from urllib.parse import quote
 from aiohttp import web
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response, StreamResponse
-from pyrogram.raw.types import MessageMediaDocument, Document, DocumentAttributeFilename
-from pyrogram.types import Message
+from pyrogram.raw.types import MessageMediaDocument, Document, DocumentAttributeFilename, Message
 
 from . import DeviceFinderCollection
 from .utils import serialize_token
@@ -59,7 +58,7 @@ def mtproto_filename(message: Message) -> str:
 
 async def _debounce_wrap(
         function: typing.Callable[..., typing.Coroutine],
-        args: typing.Tuple[typing.Any],
+        args: typing.Tuple[typing.Any, ...],
         timeout: int,
 ):
     await asyncio.sleep(timeout)
@@ -71,7 +70,7 @@ class AsyncDebounce:
         self._function = function
         self._timeout = timeout
         self._task: typing.Optional[asyncio.Task] = None
-        self._args: typing.Optional[typing.Tuple[typing.Any]] = None
+        self._args: typing.Optional[typing.Tuple[typing.Any, ...]] = None
 
     def _run(self) -> bool:
         if self._args is None:
