@@ -16,10 +16,10 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pylint poetry
+        pip install poetry
         poetry install
 
     - name: Analysing the code with pylint
       run: |
-        pylint $(find castbot/ -name "*.py" -type f | grep -v "test_" | xargs -n1)
+        poetry run pylint castbot
       shell: bash
