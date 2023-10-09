@@ -27,8 +27,7 @@ from pyrogram.raw.types import InputMessageID, InputDocumentFileLocation
 from pyrogram.raw.types.upload import File
 from pyrogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
-from . import Http, BotInterface, DeviceFinderCollection
-from .device import Device
+from . import Http, BotInterface, DeviceFinderCollection, Device
 from .utils import secret_token, serialize_token, NoDeviceException, ActionNotSupportedException, \
     UnknownCallbackException
 

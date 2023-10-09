@@ -1,12 +1,13 @@
-from .devices_collection import DeviceFinderCollection
+from .device import DeviceFinderCollection, Device
 from .http import Http, BotInterface
 from .bot import Bot
 from .downloader import Downloader
 
 __all__ = [
-    "DeviceFinderCollection",
+    "Device",
     "Downloader",
     "Http",
     "BotInterface",
-    "Bot"
+    "Bot",
+    "DeviceFinderCollection"
 ]

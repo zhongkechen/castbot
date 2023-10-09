@@ -41,6 +41,7 @@ toml = {version="^0.10", python="<3.11"}
 [tool.poetry.group.dev.dependencies]
 pyproject-flake8 = "^6.1"
 pylint = "^3.0.1"
+mypy = "1.5.1"
 
 [tool.flake8]
 max-line-length = 140
