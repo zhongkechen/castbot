@@ -55,17 +55,21 @@ async def health_check(config):
 def entry_point():
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config", type=lambda x: tomllib.load(open(x, "rb")), default="config.toml")
-    parser.add_argument("-v", "--verbose", action="count", default=0)
+    parser.add_argument("-v", "--verbose", action="count")
     parser.add_argument("-hc", "--healthcheck", type=bool, default=False, const=True, nargs="?")
-
     args = parser.parse_args()
 
     if args.verbose == 0:
         logging.basicConfig(level=logging.ERROR)
     elif args.verbose == 1:
+        logging.basicConfig(level=logging.WARNING)
+    elif args.verbose == 2:
         logging.basicConfig(level=logging.INFO)
     else:
         logging.basicConfig(level=logging.DEBUG)
+
+    # pyrogram logging is too verbose
+    logging.root.manager.getLogger("pyrogram").setLevel(logging.WARNING)
 
     if args.healthcheck:
         sys.exit(asyncio.run(health_check(args.config)))

@@ -1,5 +1,6 @@
 import abc
 import asyncio
+import logging
 import os.path
 import re
 import typing
@@ -154,7 +155,7 @@ class Http:
         try:
             site = web.TCPSite(runner, self._listen_host, self._listen_port)
             await site.start()
-            print(f"======== Running on {site.name} ========\n(Press CTRL+C to quit)")
+            logging.info("======== Running on %s ========\n(Press CTRL+C to quit)", site.name)
 
             while True:
                 await asyncio.sleep(3600)
