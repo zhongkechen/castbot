@@ -10,4 +10,5 @@ config.toml
 dist/
 build/
 *.egg-info/
+/.mypy_cache/
 .git/
