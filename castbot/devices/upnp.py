@@ -184,10 +184,7 @@ class SubscribeTask:
     _task: typing.Optional[asyncio.Task]
     _event_handler: UpnpEventHandler
 
-    def __init__(self,
-                 device: UpnpServiceDevice,
-                 service: UpnpService,
-                 url: str):
+    def __init__(self, device: UpnpServiceDevice, service: UpnpService, url: str):
         self._service = service
         self._task = None
         self._event_handler = UpnpEventHandler(NotifyServer(url), device.requester)
@@ -285,9 +282,7 @@ class UpnpDeviceFinder(DeviceFinder):
                 found_locations.add(location)
                 devices.append(await factory.async_create_device(location))
 
-        await async_search(search_target=_AVTRANSPORT_SCHEMA,
-                           timeout=self.request_timeout,
-                           async_callback=on_response)
+        await async_search(search_target=_AVTRANSPORT_SCHEMA, timeout=self.request_timeout, async_callback=on_response)
 
         return [UpnpDevice(device, self._notify_handler) for device in devices]
 

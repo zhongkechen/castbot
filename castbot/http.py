@@ -14,10 +14,7 @@ from pyrogram.raw.types import MessageMediaDocument, Document, DocumentAttribute
 from . import DeviceFinderCollection
 from .utils import serialize_token
 
-__all__ = [
-    "Http",
-    "BotInterface"
-]
+__all__ = ["Http", "BotInterface"]
 
 _RANGE_REGEX = re.compile(r"bytes=([0-9]+)-([0-9]+)?")
 
@@ -41,26 +38,19 @@ class BotInterface(abc.ABC):
 
 
 def mtproto_filename(message: Message) -> str:
-    if not (
-            isinstance(message.media, MessageMediaDocument) and
-            isinstance(message.media.document, Document)
-    ):
+    if not (isinstance(message.media, MessageMediaDocument) and isinstance(message.media.document, Document)):
         raise TypeError()
 
     try:
         return next(
-            attr.file_name
-            for attr in message.media.document.attributes
-            if isinstance(attr, DocumentAttributeFilename)
+            attr.file_name for attr in message.media.document.attributes if isinstance(attr, DocumentAttributeFilename)
         )
     except StopIteration as error:
         raise TypeError() from error
 
 
 async def _debounce_wrap(
-        function: typing.Callable[..., typing.Coroutine],
-        args: typing.Tuple[typing.Any, ...],
-        timeout: int,
+    function: typing.Callable[..., typing.Coroutine], args: typing.Tuple[typing.Any, ...], timeout: int
 ):
     await asyncio.sleep(timeout)
     await function(*args)
@@ -171,7 +161,7 @@ class Http:
         return local_token in self._tokens
 
     @staticmethod
-    def _write_http_range_headers(result: StreamResponse, read_after: int,  size: int, max_size: int):
+    def _write_http_range_headers(result: StreamResponse, read_after: int, size: int, max_size: int):
         result.headers.setdefault("Content-Range", f"bytes {read_after}-{max_size}/{size}")
         result.headers.setdefault("Accept-Ranges", "bytes")
         result.headers.setdefault("Content-Length", str(size))
@@ -205,7 +195,7 @@ class Http:
     def _feed_timeout(self, local_token: int, size: int):
         debounce = self._stream_debounce.setdefault(
             local_token,
-            AsyncDebounce(self._timeout_handler, self._request_gone_timeout)
+            AsyncDebounce(self._timeout_handler, self._request_gone_timeout),
         )
 
         debounce.update_args(local_token, size)
@@ -335,7 +325,7 @@ class Http:
                 data_to_skip = False
 
             if new_offset > max_size:
-                block = block[:-(new_offset - max_size)]
+                block = block[: -(new_offset - max_size)]
 
             if request.transport is None:
                 break

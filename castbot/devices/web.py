@@ -14,10 +14,10 @@ class WebDevice(Device):
     _url_to_play: typing.Optional[str] = None
     _device_name: str
     _remote_token: int
-    _devices: typing.Dict[int, 'WebDevice']
+    _devices: typing.Dict[int, "WebDevice"]
     _manipulation_timestamp: float
 
-    def __init__(self, device_name: str, token: int, devices: typing.Dict[int, 'WebDevice']):
+    def __init__(self, device_name: str, token: int, devices: typing.Dict[int, "WebDevice"]):
         self._device_name = device_name
         self._remote_token = token
         self._devices = devices
@@ -124,7 +124,7 @@ class WebDeviceFinder(DeviceFinder):
     def get_routers(self) -> RoutersDefType:
         return [
             WebDeviceApiRequestRegisterDevice(self._password, self._devices),
-            WebDeviceApiRequestPoll(self._devices)
+            WebDeviceApiRequestPoll(self._devices),
         ]
 
 

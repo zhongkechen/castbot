@@ -6,7 +6,7 @@ __all__ = [
     "ConfigError",
     "NoDeviceException",
     "ActionNotSupportedException",
-    "UnknownCallbackException"
+    "UnknownCallbackException",
 ]
 
 

@@ -53,7 +53,7 @@ async def health_check(config):
 
 def entry_point():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-c", "--config", type=lambda x: tomllib.load(open(x, "rb")), default="config.toml")
+    parser.add_argument("-c", "--config", type=lambda x: open_config(parser, x), default="config.toml")
     parser.add_argument("-v", "--verbose", action="count")
     parser.add_argument("-hc", "--healthcheck", type=bool, default=False, const=True, nargs="?")
     args = parser.parse_args()

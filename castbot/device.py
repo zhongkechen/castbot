@@ -87,7 +87,8 @@ class DeviceFinderCollection:
     def __init__(self, config):
         self._finder_classes: typing.Dict[str, DeviceFinder.__class__] = {
             name: importlib.import_module("." + name, "castbot.devices").Finder
-            for _, name, _ in pkgutil.iter_modules([os.path.dirname(devices.__file__)])}
+            for _, name, _ in pkgutil.iter_modules([os.path.dirname(devices.__file__)])
+        }
         self._finders = [self._finder_classes[device_config["type"]](device_config) for device_config in config]
         self._devices: typing.List[Device] = []
 
@@ -126,7 +127,7 @@ class DeviceFinderCollection:
 __all__ = [
     "Device",
     "DeviceFinder",
+    "DeviceFinderCollection",
     "RoutersDefType",
     "RequestHandler",
-    "DeviceFinderCollection"
 ]

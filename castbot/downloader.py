@@ -18,7 +18,8 @@ class Downloader:
                     video_filename = os.path.join(tmpdir, "video1.mp4")
                     process = await asyncio.create_subprocess_shell(
                         f"yt-dlp -v -f mp4 -o {video_filename} "
-                        f"--write-thumbnail --write-info-json --convert-thumbnails jpg '{url}'")
+                        f"--write-thumbnail --write-info-json --convert-thumbnails jpg '{url}'"
+                    )
                     await process.communicate()
                     thumbnail_filename = os.path.join(tmpdir, "video1.jpg")
                     info_json = json.load(open(os.path.join(tmpdir, "video1.info.json"), encoding="utf8"))

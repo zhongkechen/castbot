@@ -67,10 +67,7 @@ class VlcDevice(Device):
                 _LOGGER.error("vlc %s: need password", self._params.host)
                 return writer.close()
 
-        writer.write(
-            method.encode(_ENCODING) + b" " +
-            b" ".join(a.encode(_ENCODING) for a in args) + _EOF
-        )
+        writer.write(method.encode(_ENCODING) + b" " + b" ".join(a.encode(_ENCODING) for a in args) + _EOF)
 
         await writer.drain()
         return writer.close()

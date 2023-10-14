@@ -86,14 +86,10 @@ class PlayingVideo:
         return f"for file <code>{self.video_message.id}</code>"
 
     def _gen_command_button(self, command):
-        return InlineKeyboardButton(
-            command, f"c:{self.video_message.id}:{self.token}:{command}"
-        )
+        return InlineKeyboardButton(command, f"c:{self.video_message.id}:{self.token}:{command}")
 
     def _gen_device_button(self, device):
-        return InlineKeyboardButton(
-            repr(device), f"s:{self.video_message.id}:{self.token}:{repr(device)}"
-        )
+        return InlineKeyboardButton(repr(device), f"s:{self.video_message.id}:{self.token}:{repr(device)}")
 
     async def send_stopped_control_message(self, remaining=None):
         buttons = [
@@ -125,15 +121,11 @@ class PlayingVideo:
     async def create_or_update_control_message(self, text, buttons):
         if self.control_message:
             try:
-                await self.control_message.edit_text(
-                    text, reply_markup=InlineKeyboardMarkup(buttons)
-                )
+                await self.control_message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
             except MessageNotModified:
                 pass
         else:
-            self.control_message = await self.video_message.reply(
-                text, reply_markup=InlineKeyboardMarkup(buttons)
-            )
+            self.control_message = await self.video_message.reply(text, reply_markup=InlineKeyboardMarkup(buttons))
 
     async def play(self, http: Http):
         if not self.playing_device:
@@ -180,9 +172,7 @@ class PlayingVideo:
         raise ActionNotSupportedException
 
     async def select_device(self, devices):
-        buttons = [[self._gen_device_button(d)] for d in devices] + [
-            [self._gen_command_button("REFRESH")]
-        ]
+        buttons = [[self._gen_device_button(d)] for d in devices] + [[self._gen_command_button("REFRESH")]]
         await self.create_or_update_control_message("Select a device", buttons)
 
 
@@ -190,9 +180,7 @@ def pyrogram_filename(message: Message) -> str:
     named_media_types = ("document", "video", "audio", "video_note", "animation")
     try:
         return next(
-            getattr(message, t, None).file_name
-            for t in named_media_types
-            if getattr(message, t, None) is not None
+            getattr(message, t, None).file_name for t in named_media_types if getattr(message, t, None) is not None
         )
     except StopIteration as error:
         raise TypeError() from error
@@ -230,18 +218,12 @@ class Bot(BotInterface):
 
     def prepare(self):
         admin_filter = filters.chat(self._admins) & filters.private
-        self.register(
-            MessageHandler(self._new_document, filters.document & admin_filter)
-        )
+        self.register(MessageHandler(self._new_document, filters.document & admin_filter))
         self.register(MessageHandler(self._new_document, filters.video & admin_filter))
         self.register(MessageHandler(self._new_document, filters.audio & admin_filter))
-        self.register(
-            MessageHandler(self._new_document, filters.animation & admin_filter)
-        )
+        self.register(MessageHandler(self._new_document, filters.animation & admin_filter))
         self.register(MessageHandler(self._new_document, filters.voice & admin_filter))
-        self.register(
-            MessageHandler(self._new_document, filters.video_note & admin_filter)
-        )
+        self.register(MessageHandler(self._new_document, filters.video_note & admin_filter))
         self.register(MessageHandler(self._new_link, filters.text & admin_filter))
 
         admin_filter_inline = create(lambda _, __, m: m.from_user.id in self._admins)
@@ -254,17 +236,12 @@ class Bot(BotInterface):
 
         return user_data.selected_device
 
-    async def _reconstruct_playing_video(
-        self, message_id, token, callback: CallbackQuery
-    ):
+    async def _reconstruct_playing_video(self, message_id, token, callback: CallbackQuery):
         # re-construct PlayVideo when the bot is restarted
         user_id = callback.from_user.id
         control_message = callback.message
         video_message: Message = await self.get_message(message_id)
-        if (
-            control_message.reply_to_message_id
-            and control_message.reply_to_message_id != message_id
-        ):
+        if control_message.reply_to_message_id and control_message.reply_to_message_id != message_id:
             link_message = await self.get_message(control_message.reply_to_message_id)
         else:
             link_message = None
@@ -288,9 +265,7 @@ class Bot(BotInterface):
         token = int(token)
         local_token = serialize_token(message_id, token)
         if local_token not in self._playing_videos:
-            self._playing_videos[local_token] = await self._reconstruct_playing_video(
-                message_id, token, message
-            )
+            self._playing_videos[local_token] = await self._reconstruct_playing_video(message_id, token, message)
 
         playing_video = self._playing_videos[local_token]
 
@@ -299,9 +274,7 @@ class Bot(BotInterface):
 
         if data.startswith("c:"):
             try:
-                return await self._callback_control_playback(
-                    playing_video, payload, message
-                )
+                return await self._callback_control_playback(playing_video, payload, message)
             except NoDeviceException:
                 await message.answer("Device not selected")
             except ActionNotSupportedException:
@@ -312,21 +285,15 @@ class Bot(BotInterface):
 
         raise UnknownCallbackException
 
-    async def _callback_control_playback(
-        self, playing_video, action, message: CallbackQuery
-    ):
+    async def _callback_control_playback(self, playing_video, action, message: CallbackQuery):
         if action in ["DEVICE", "REFRESH"]:
             if action == "REFRESH":
                 await self._finders.refresh_all_devices()
-            return await playing_video.select_device(
-                await self._finders.list_all_devices()
-            )
+            return await playing_video.select_device(await self._finders.list_all_devices())
 
         # async with async_timeout.timeout(self._finders.device_request_timeout) as timeout_context:
         if action == "PLAY":
-            self._http.add_remote_token(
-                playing_video.video_message.id, playing_video.token
-            )
+            self._http.add_remote_token(playing_video.video_message.id, playing_video.token)
             await playing_video.play(self._http)
             await message.answer("Playing")
         elif action == "STOP":
@@ -341,22 +308,16 @@ class Bot(BotInterface):
         # if timeout_context.expired:
         #    await message.answer("Timeout while communicate with the device")
 
-    async def _callback_select_device(
-        self, playing_video, device_name, message: CallbackQuery
-    ):
+    async def _callback_select_device(self, playing_video, device_name, message: CallbackQuery):
         device = await self._finders.find_device_by_name(device_name)
         if not device:
             return await message.answer("Wrong device")
 
         playing_video.playing_device = device
         await playing_video.send_stopped_control_message()
-        self._user_data[playing_video.user_id] = UserData(
-            device
-        )  # Update the user's default device
+        self._user_data[playing_video.user_id] = UserData(device)  # Update the user's default device
 
-    async def _new_document(
-        self, _: Client, video_message: Message, link_message=None, control_message=None
-    ):
+    async def _new_document(self, _: Client, video_message: Message, link_message=None, control_message=None):
         user_id = (link_message or video_message).from_user.id
         device = self._get_user_device(user_id)
         token = secret_token()
@@ -387,9 +348,7 @@ class Bot(BotInterface):
                 height,
             ):
                 file_stats = os.stat(output_filename)
-                await reply_message.edit_text(
-                    f"Download completed. Uploading video (size={file_stats.st_size})"
-                )
+                await reply_message.edit_text(f"Download completed. Uploading video (size={file_stats.st_size})")
                 reader = open(output_filename, mode="rb")
                 video_message = await message.reply_video(
                     reader,
@@ -442,9 +401,7 @@ class Bot(BotInterface):
 
     @alru_cache
     async def get_message(self, message_id: int) -> Message:
-        messages = await self._client.invoke(
-            GetMessages(id=[InputMessageID(id=message_id)])
-        )
+        messages = await self._client.invoke(GetMessages(id=[InputMessageID(id=message_id)]))
 
         if not messages.messages:
             raise ValueError("wrong message_id")
@@ -465,9 +422,7 @@ class Bot(BotInterface):
             logging.log(logging.ERROR, "main session not connected")
             raise ConnectionError()
 
-    async def get_block(
-        self, message: pyrogram.raw.types.Message, offset: int, block_size: int
-    ) -> bytes:
+    async def get_block(self, message: pyrogram.raw.types.Message, offset: int, block_size: int) -> bytes:
         session = self._client.media_sessions.get(message.media.document.dc_id)
 
         request = GetFile(
@@ -514,9 +469,7 @@ class Bot(BotInterface):
 
             if dc_id != await self._client.storage.dc_id():
                 if dc_id not in keys:
-                    exported_auth = await self._client.invoke(
-                        ExportAuthorization(dc_id=dc_id)
-                    )
+                    exported_auth = await self._client.invoke(ExportAuthorization(dc_id=dc_id))
 
                     auth = pyrogram.session.Auth(self._client, dc_id, False)
                     auth_key = await auth.create()
@@ -524,11 +477,7 @@ class Bot(BotInterface):
                     session = session(auth_key)
                     await session.start()
 
-                    await session.invoke(
-                        ImportAuthorization(
-                            id=exported_auth.id, bytes=exported_auth.bytes
-                        )
-                    )
+                    await session.invoke(ImportAuthorization(id=exported_auth.id, bytes=exported_auth.bytes))
                     keys[dc_id] = session.auth_key
 
                 else:

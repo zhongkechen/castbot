@@ -76,12 +76,7 @@ class XbmcDevice(Device):
         pass
 
     async def _call(self, method: str, **args: typing.Union[ArgType, typing.Mapping[str, ArgType]]):
-        data = {
-            _ATTR_JSONRPC: _JSONRPC_VERSION,
-            _ATTR_METHOD: method,
-            _ATTR_ID: str(uuid.uuid4()),
-            _ATTR_PARAMS: args
-        }
+        data = {_ATTR_JSONRPC: _JSONRPC_VERSION, _ATTR_METHOD: method, _ATTR_ID: str(uuid.uuid4()), _ATTR_PARAMS: args}
 
         response = None
         session = aiohttp.ClientSession(auth=self._auth, headers=_JSON_HEADERS)
@@ -90,30 +85,24 @@ class XbmcDevice(Device):
             response = await session.post(self._http_url, data=json.dumps(data))
 
             if response.status == 401:
-                _LOGGER.error(
-                    "Error fetching Kodi data. HTTP %d Unauthorized. "
-                    "Password is incorrect.", response.status)
+                _LOGGER.error("Error fetching Kodi data. HTTP %d Unauthorized. Password is incorrect.", response.status)
                 return None
 
             if response.status != 200:
-                _LOGGER.error(
-                    "Error fetching Kodi data. HTTP %d", response.status)
+                _LOGGER.error("Error fetching Kodi data. HTTP %d", response.status)
                 return None
 
             response_json = await response.json()
 
             if "error" in response_json:
                 _LOGGER.error(
-                    "RPC Error Code %d: %s",
-                    response_json["error"]["code"],
-                    response_json["error"]["message"])
+                    "RPC Error Code %d: %s", response_json["error"]["code"], response_json["error"]["message"]
+                )
                 return None
 
             return response_json["result"]
 
-        except (aiohttp.ClientError,
-                asyncio.TimeoutError,
-                ConnectionRefusedError):
+        except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionRefusedError):
             return None
 
         finally:
