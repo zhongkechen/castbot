@@ -269,8 +269,6 @@ class UpnpDevice(Device):
 
 
 class UpnpDeviceFinder(DeviceFinder):
-    singleton = True
-
     def __init__(self, config):
         super().__init__(config)
         self._notify_handler = UpnpNotifyServer()

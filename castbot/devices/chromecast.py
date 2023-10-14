@@ -43,8 +43,6 @@ class ChromecastDevice(Device):
 
 
 class ChromecastDeviceFinder(DeviceFinder):
-    singleton = True
-
     def __init__(self, config):
         super().__init__(config)
         self._devices_cache: typing.Dict[str, catt.api.CattDevice] = {}

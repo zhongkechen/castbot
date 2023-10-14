@@ -36,8 +36,7 @@ async def async_main(config):
     bot = Bot(config["bot"], downloader, http, device_finder)
     http.set_bot(bot)
 
-    await bot.start()
-    await http.start()
+    await asyncio.gather(bot.start(), http.start())
 
 
 async def health_check(config):

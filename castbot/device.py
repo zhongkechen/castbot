@@ -1,6 +1,7 @@
 import abc
 import asyncio
 import importlib
+import logging
 import os.path
 import pkgutil
 import typing
@@ -52,17 +53,27 @@ class Device(abc.ABC):
 
 
 class DeviceFinder(abc.ABC):
-    singleton = False
-    device_finder: typing.Dict[str, "DeviceFinder"] = {}
+    device_finder: typing.Set["DeviceFinder"] = set()
 
     def __init__(self, config):
+        self.config = config
         self.request_timeout = int(config.get("request_timeout", 5))
-        if self.singleton:
-            cls = self.__class__
-            if cls.__name__ not in self.device_finder:
-                self.device_finder[cls.__name__] = self
-            else:
-                raise ConfigError("Multiple chromecast devices specified in config")
+        if self not in self.device_finder:
+            logging.info("DeviceFinder added: %s", config)
+            self.device_finder.add(self)
+        else:
+            logging.error("Duplicate DeviceFinder config: %s", config)
+            raise ConfigError("Multiple same devices specified in config")
+
+    def __hash__(self):
+        return hash(tuple(sorted(self.config.items())))
+
+    def __eq__(self, other):
+        if self is other:
+            return True
+        if isinstance(other, DeviceFinder):
+            return other.config == self.config
+        return False
 
     @abc.abstractmethod
     async def find(self) -> typing.List[Device]:
