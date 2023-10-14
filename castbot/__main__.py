@@ -4,7 +4,8 @@ import logging
 import os.path
 import sys
 import traceback
-import urllib.request
+
+import aiohttp
 
 try:
     import tomllib
@@ -15,13 +16,12 @@ from castbot import Http, Bot, DeviceFinderCollection, Downloader
 
 
 def open_config(parser: argparse.ArgumentParser, arg: str):
-    if not os.path.exists(arg):
-        parser.error(f"The file `{arg}` does not exist")
-    elif not os.path.isfile(arg):
-        parser.error(f"`{arg}` is not a file")
-
     try:
         return tomllib.load(open(arg, "rb"))
+    except FileNotFoundError:
+        return parser.error(f"The file `{arg}` does not exist")
+    except IsADirectoryError:
+        return parser.error(f"`{arg}` is not a file")
     except tomllib.TOMLDecodeError as err:
         return parser.error(f"config file parsing error:\n{str(err)}")
     except ValueError as err:
@@ -41,10 +41,12 @@ async def async_main(config):
     await http.start()
 
 
-def health_check(config):
-    # noinspection PyBroadException
+async def health_check(config):
+    url = f"http://{config['http']['listen_host']}:{config['http']['listen_port']}/healthcheck"
     try:
-        urllib.request.urlopen(f"http://{config['http']['listen_host']}:{config['http']['listen_port']}/healthcheck")
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url):
+                pass
     except Exception:
         traceback.print_exc()
         return 1
@@ -54,25 +56,23 @@ def health_check(config):
 
 def entry_point():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-c", "--config", type=lambda x: open_config(parser, x), default="config.toml")
-    parser.add_argument("-v", "--verbosity", type=int, choices=[0, 1, 2], default=0)
+    parser.add_argument("-c", "--config", type=lambda x: tomllib.load(open(x, "rb")), default="config.toml")
+    parser.add_argument("-v", "--verbose", action="count", default=0)
     parser.add_argument("-hc", "--healthcheck", type=bool, default=False, const=True, nargs="?")
 
     args = parser.parse_args()
 
-    if args.verbosity == 0:
+    if args.verbose == 0:
         logging.basicConfig(level=logging.ERROR)
-
-    elif args.verbosity == 1:
+    elif args.verbose == 1:
         logging.basicConfig(level=logging.INFO)
-
-    elif args.verbosity == 2:
+    else:
         logging.basicConfig(level=logging.DEBUG)
 
     if args.healthcheck:
-        sys.exit(health_check(args.config))
+        sys.exit(asyncio.run(health_check(args.config)))
 
-    asyncio.run(async_main(args.config))
+    asyncio.get_event_loop().run_until_complete(async_main(args.config))
 
 
 if __name__ == "__main__":

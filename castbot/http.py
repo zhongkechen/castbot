@@ -149,8 +149,17 @@ class Http:
         for method, path, handle in self._finders.get_all_routers():
             app.router.add_route(method, path, handle)
 
-        # noinspection PyProtectedMember
-        await web._run_app(app, host=self._listen_host, port=self._listen_port)
+        runner = web.AppRunner(app, handle_signals=True)
+        await runner.setup()
+        try:
+            site = web.TCPSite(runner, self._listen_host, self._listen_port)
+            await site.start()
+            print(f"======== Running on {site.name} ========\n(Press CTRL+C to quit)")
+
+            while True:
+                await asyncio.sleep(3600)
+        finally:
+            await runner.cleanup()
 
     def add_remote_token(self, message_id: int, partial_remote_token: int) -> int:
         local_token = serialize_token(message_id, partial_remote_token)
