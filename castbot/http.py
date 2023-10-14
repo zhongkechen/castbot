@@ -11,7 +11,7 @@ from aiohttp.web_request import Request
 from aiohttp.web_response import Response, StreamResponse
 from pyrogram.raw.types import MessageMediaDocument, Document, DocumentAttributeFilename, Message
 
-from . import DeviceFinderCollection
+from .device import DeviceFinderCollection
 from .utils import serialize_token
 
 __all__ = ["Http", "BotInterface"]

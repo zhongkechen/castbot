@@ -31,7 +31,8 @@ from pyrogram.types import (
     InlineKeyboardButton,
 )
 
-from . import Http, BotInterface, DeviceFinderCollection, Device
+from .http import Http, BotInterface
+from .device import DeviceFinderCollection, Device
 from .utils import (
     secret_token,
     serialize_token,

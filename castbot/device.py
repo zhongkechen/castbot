@@ -10,8 +10,8 @@ import async_timeout
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 
-from castbot import devices
-from castbot.utils import ConfigError
+from . import devices
+from .utils import ConfigError
 
 
 class RequestHandler(abc.ABC):
