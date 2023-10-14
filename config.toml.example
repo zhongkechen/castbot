@@ -1,5 +1,3 @@
-downloader = "yt-dlp"
-
 [bot]
 api_id=6
 api_hash="eb06d4abfb49dc3eeb1aeb98ae0f581e"
@@ -10,6 +8,10 @@ admins=[337885031,32432424,44353421]
 [http]
 listen_host = "192.168.1.2"
 listen_port = 8350
+
+[downloader]
+downloader = "yt-dlp"
+concurrency = 10
 
 [[devices]]
 type="upnp"

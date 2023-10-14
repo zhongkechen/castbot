@@ -47,8 +47,12 @@ docker run --network host -v "$(pwd)/config.toml:/app/config.toml:ro" -d ghcr.io
 Create a file `config.toml` with the following content
 
 ```toml
+[downloader]
 # Use yt-dlp or you-get to download Youtube videos
 downloader = "yt-dlp"
+
+# how many concurrent downloads
+concurrency = 10
 
 [bot]
 
