@@ -159,7 +159,7 @@ class PlayingVideo:
                 await self.playing_device.stop()
             except Exception:
                 # make sure stop always succeeds even if the device is gone
-                traceback.print_exc()
+                logging.exception("Failed to stop device %r", self.playing_device)
         await self.send_stopped_control_message()
         if not self.playing_device:
             raise NoDeviceException
@@ -308,9 +308,8 @@ class Bot(BotInterface):
             except ActionNotSupportedException:
                 await message.answer("Action not supported by the device")
             except Exception as ex:
-                traceback.print_exc()
-
-                await message.answer(f"Unknown exception: {ex.__class__.__name__}")
+                logging.exception("Failed to control the device")
+                await message.answer(f"Internal error: {ex.__class__.__name__}")
 
         raise UnknownCallbackException
 

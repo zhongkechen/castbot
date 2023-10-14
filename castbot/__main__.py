@@ -46,7 +46,7 @@ async def health_check(config):
             async with session.get(url):
                 pass
     except Exception:
-        traceback.print_exc()
+        logging.exception("Failed health check")
         return 1
 
     return 0
