@@ -6,7 +6,6 @@ import os
 import os.path
 import pickle
 import re
-import traceback
 import typing
 
 import pyrogram
@@ -409,9 +408,8 @@ class Bot(BotInterface):
                 control_message=reply_message,
             )
         except Exception as e:
-            await reply_message.edit_text(
-                f"Exception thrown {e} when downloading {url}: {traceback.format_exc()}"
-            )
+            logging.exception("Failed to download %s", url)
+            await reply_message.edit_text(f"Exception thrown {e} when downloading {url}")
 
     async def _new_link(self, _: Client, message: Message):
         text = message.text.strip()

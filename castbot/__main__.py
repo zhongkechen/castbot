@@ -2,7 +2,6 @@ import argparse
 import asyncio
 import logging
 import sys
-import traceback
 
 import aiohttp
 
@@ -69,7 +68,7 @@ def entry_point():
         logging.basicConfig(level=logging.DEBUG)
 
     # pyrogram logging is too verbose
-    logging.root.manager.getLogger("pyrogram").setLevel(logging.WARNING)
+    logging.getLogger("pyrogram").setLevel(logging.WARNING)
 
     if args.healthcheck:
         sys.exit(asyncio.run(health_check(args.config)))
