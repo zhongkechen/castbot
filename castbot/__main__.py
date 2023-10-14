@@ -33,7 +33,7 @@ def open_config(parser: argparse.ArgumentParser, arg: str):
 async def async_main(config):
     device_finder = DeviceFinderCollection(config["devices"])
     http = Http(config["http"], device_finder)
-    downloader = Downloader(config["downloader"])
+    downloader = Downloader(config.get("downloader", {}))
     bot = Bot(config["bot"], downloader, http, device_finder)
     http.set_bot(bot)
 
