@@ -1,15 +1,15 @@
+import argparse
 import asyncio
 import logging
-import argparse
 import os.path
 import sys
+import traceback
+import urllib.request
 
 try:
     import tomllib
 except ImportError:
     import toml as tomllib
-import traceback
-import urllib.request
 
 from castbot import Http, Bot, DeviceFinderCollection, Downloader
 
@@ -39,11 +39,6 @@ async def async_main(config):
 
     await bot.start()
     await http.start()
-
-
-def main(config):
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(async_main(config))
 
 
 def health_check(config):
@@ -77,7 +72,7 @@ def entry_point():
     if args.healthcheck:
         sys.exit(health_check(args.config))
 
-    main(args.config)
+    asyncio.run(async_main(args.config))
 
 
 if __name__ == "__main__":
