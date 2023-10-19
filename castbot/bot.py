@@ -341,23 +341,17 @@ class Bot(BotInterface):
             disable_web_page_preview=True,
         )
         try:
-            async with self._downloader.download(url) as (
-                output_filename,
-                thumbnail_filename,
-                title,
-                width,
-                height,
-            ):
-                file_stats = os.stat(output_filename)
+            async with self._downloader.download(url) as downloaded_video:
+                file_stats = os.stat(downloaded_video.output_filename)
                 await reply_message.edit_text(f"Download completed. Uploading video (size={file_stats.st_size})")
-                reader = open(output_filename, mode="rb")
+                reader = open(downloaded_video.output_filename, mode="rb")
                 video_message = await message.reply_video(
                     reader,
                     quote=True,
-                    caption=title or "",
-                    width=width or 0,
-                    height=height or 0,
-                    thumb=thumbnail_filename,
+                    caption=downloaded_video.title or "",
+                    width=downloaded_video.width or 0,
+                    height=downloaded_video.height or 0,
+                    thumb=downloaded_video.thumbnail_filename,
                     reply_to_message_id=message.id,
                 )
             await reply_message.edit_text("Upload completed.")

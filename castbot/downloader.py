@@ -3,6 +3,21 @@ import contextlib
 import json
 import os
 import tempfile
+from typing import Optional
+
+
+class DownloadedVideo:
+    def __init__(self,
+                 video_filename: str,
+                 thumbnail_filename: Optional[str] = None,
+                 title: Optional[str] = None,
+                 width: Optional[int] = None,
+                 height: Optional[int] = None):
+        self.video_filename = video_filename
+        self.thumbnail_filename = thumbnail_filename
+        self.title = title
+        self.width = width
+        self.height = height
 
 
 class Downloader:
@@ -23,17 +38,13 @@ class Downloader:
                     await process.communicate()
                     thumbnail_filename = os.path.join(tmpdir, "video1.jpg")
                     info_json = json.load(open(os.path.join(tmpdir, "video1.info.json"), encoding="utf8"))
-                    title = info_json["title"]
-                    width = info_json["width"]
-                    height = info_json["height"]
+                    downloaded_video = DownloadedVideo(video_filename, thumbnail_filename,
+                                                       info_json["title"], info_json["width"], info_json["height"])
                 else:  # "you-get"
                     output_filename = os.path.join(tmpdir, "video1")
                     process = await asyncio.create_subprocess_shell(f"you-get -O {output_filename} '{url}'")
                     video_filename = output_filename + ".mp4"
-                    thumbnail_filename = None
-                    title = None
-                    width = None
-                    height = None
+                    downloaded_video = DownloadedVideo(video_filename)
                     await process.communicate()
 
-                yield video_filename, thumbnail_filename, title, width, height
+                yield downloaded_video
