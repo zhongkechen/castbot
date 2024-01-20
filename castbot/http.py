@@ -315,28 +315,31 @@ class Http:
 
         await stream.prepare(request)
 
-        while offset < max_size:
-            self._feed_timeout(local_token, size)
-            block = await self._bot.get_block(message, offset, self._block_size)
-            new_offset = offset + len(block)
+        try:
+            while offset < max_size:
+                self._feed_timeout(local_token, size)
+                block = await self._bot.get_block(message, offset, self._block_size)
+                new_offset = offset + len(block)
 
-            if data_to_skip:
-                block = block[data_to_skip:]
-                data_to_skip = False
+                if data_to_skip:
+                    block = block[data_to_skip:]
+                    data_to_skip = False
 
-            if new_offset > max_size:
-                block = block[: -(new_offset - max_size)]
+                if new_offset > max_size:
+                    block = block[: -(new_offset - max_size)]
 
-            if request.transport is None:
-                break
+                if request.transport is None:
+                    break
 
-            self._feed_stream_transport(local_token, request.transport)
+                self._feed_stream_transport(local_token, request.transport)
 
-            if request.transport.is_closing():
-                break
+                if request.transport.is_closing():
+                    break
 
-            await stream.write(block)
-            self._feed_downloaded_blocks(offset, local_token)
-            offset = new_offset
+                await stream.write(block)
+                self._feed_downloaded_blocks(offset, local_token)
+                offset = new_offset
 
-        await stream.write_eof()
+            await stream.write_eof()
+        except (ConnectionResetError, BrokenPipeError):
+            pass
