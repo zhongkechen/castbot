@@ -342,9 +342,9 @@ class Bot(BotInterface):
         )
         try:
             async with self._downloader.download(url) as downloaded_video:
-                file_stats = os.stat(downloaded_video.output_filename)
+                file_stats = os.stat(downloaded_video.video_filename)
                 await reply_message.edit_text(f"Download completed. Uploading video (size={file_stats.st_size})")
-                reader = open(downloaded_video.output_filename, mode="rb")
+                reader = open(downloaded_video.video_filename, mode="rb")
                 video_message = await message.reply_video(
                     reader,
                     quote=True,
