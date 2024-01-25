@@ -39,7 +39,7 @@ class Downloader:
                     thumbnail_filename = os.path.join(tmpdir, "video1.jpg")
                     info_json = json.load(open(os.path.join(tmpdir, "video1.info.json"), encoding="utf8"))
                     downloaded_video = DownloadedVideo(video_filename, thumbnail_filename,
-                                                       info_json["title"], info_json["width"], info_json["height"])
+                                                       info_json.get("title"), info_json.get("width"), info_json.get("height"))
                 else:  # "you-get"
                     output_filename = os.path.join(tmpdir, "video1")
                     process = await asyncio.create_subprocess_shell(f"you-get -O {output_filename} '{url}'")
