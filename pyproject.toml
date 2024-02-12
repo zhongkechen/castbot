@@ -20,7 +20,7 @@ tgcrypto = "^1.2"
 
 
 [tool.poetry.group.dev.dependencies]
-pyproject-flake8 = "^6.1"
+Flake8-pyproject = "^1.2.3"
 pylint = "^3.0.1"
 mypy = "^1.6"
 types-toml = "^0.10"
