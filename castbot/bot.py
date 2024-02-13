@@ -121,6 +121,10 @@ class PlayingVideo:
         text = f"Paused {self._gen_message_str()} {self._gen_device_str()}"
         await self.create_or_update_control_message(text, buttons)
 
+    async def send_select_device_message(self, devices):
+        buttons = [[self._gen_device_button(d)] for d in devices] + [[self._gen_command_button("REFRESH")]]
+        await self.create_or_update_control_message("Select a device", buttons)
+
     async def create_or_update_control_message(self, text, buttons):
         if self.control_message:
             try:
@@ -173,9 +177,9 @@ class PlayingVideo:
             return await self.send_playing_control_message()
         raise ActionNotSupportedException
 
-    async def select_device(self, devices):
-        buttons = [[self._gen_device_button(d)] for d in devices] + [[self._gen_command_button("REFRESH")]]
-        await self.create_or_update_control_message("Select a device", buttons)
+    async def select_device(self, device: Device):
+        self.playing_device = device
+        await self.send_stopped_control_message()
 
 
 def pyrogram_filename(message: Message) -> str:
@@ -292,7 +296,7 @@ class Bot(BotInterface):
         if action in ["DEVICE", "REFRESH"]:
             if action == "REFRESH":
                 await self._finders.refresh_all_devices()
-            return await playing_video.select_device(await self._finders.list_all_devices())
+            return await playing_video.send_select_device_message(await self._finders.list_all_devices())
 
         # async with async_timeout.timeout(self._finders.device_request_timeout) as timeout_context:
         if action == "PLAY":
@@ -315,8 +319,7 @@ class Bot(BotInterface):
         if not device:
             return await message.answer("Wrong device")
 
-        playing_video.playing_device = device
-        await playing_video.send_stopped_control_message()
+        await playing_video.select_device(device)
         self._user_data[playing_video.user_id] = UserData(device)  # Update the user's default device
 
     async def _new_document(self, _: Client, video_message: Message, link_message=None, control_message=None):
