@@ -18,6 +18,7 @@ from async_upnp_client.event_handler import UpnpEventHandler
 from async_upnp_client.exceptions import UpnpError
 from async_upnp_client.search import async_search
 
+from ..utils import LocalToken
 from ..device import Device, DeviceFinder, RoutersDefType, RequestHandler
 
 __all__ = ["Finder"]
@@ -116,15 +117,15 @@ class DeviceStatus:
 
 
 class UpnpNotifyServer(RequestHandler):
-    _devices: typing.Dict[int, DeviceStatus]
+    _devices: typing.Dict[LocalToken, DeviceStatus]
 
     def __init__(self):
         self._devices = {}
 
-    def add_device(self, device: DeviceStatus, local_token: int):
+    def add_device(self, device: DeviceStatus, local_token: LocalToken):
         self._devices[local_token] = device
 
-    def remove_device(self, local_token: int):
+    def remove_device(self, local_token: LocalToken):
         if local_token in self._devices:
             del self._devices[local_token]
 
@@ -140,7 +141,7 @@ class UpnpNotifyServer(RequestHandler):
         if not local_token_raw.isdigit():
             return Response(status=400)
 
-        local_token: int = int(local_token_raw)
+        local_token: LocalToken = LocalToken.deserialize(int(local_token_raw))
 
         if local_token not in self._devices:
             return Response(status=403)
@@ -229,7 +230,7 @@ class UpnpDevice(Device):
     async def stop(self):
         await _upnp_safe_stop(self._service)
 
-    async def on_close(self, local_token: int):
+    async def on_close(self, local_token: LocalToken):
         task = self._subscribe_task
 
         if task is not None:
@@ -237,7 +238,7 @@ class UpnpDevice(Device):
 
         self._notify_handler.remove_device(local_token)
 
-    async def play(self, url: str, title: str, local_token: int):
+    async def play(self, url: str, title: str, local_token: LocalToken):
         set_url = self._service.action("SetAVTransportURI")
         meta = _DLL_METADATA.format(title=escape(ascii_only(title)), url=escape(url), flags=_VIDEO_FLAGS)
         await set_url.async_call(InstanceID=0, CurrentURI=url, CurrentURIMetaData=meta)

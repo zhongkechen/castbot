@@ -8,6 +8,7 @@ import uuid
 
 import aiohttp
 
+from ..utils import LocalToken
 from ..device import Device, DeviceFinder
 
 __all__ = ["Finder"]
@@ -72,7 +73,7 @@ class XbmcDevice(Device):
     def get_device_name(self) -> str:
         return f"xbmc @{self._host}"
 
-    async def on_close(self, local_token: int):
+    async def on_close(self, local_token: LocalToken):
         pass
 
     async def _call(self, method: str, **args: typing.Union[ArgType, typing.Mapping[str, ArgType]]):
@@ -117,7 +118,7 @@ class XbmcDevice(Device):
         if players:
             await self._call("Player.Stop", playerid=players[0]["playerid"])
 
-    async def play(self, url: str, title: str, local_token: int):
+    async def play(self, url: str, title: str, local_token: LocalToken):
         await self._call("Playlist.Clear", playlistid=0)
         await self._call("Playlist.Add", playlistid=0, item={"file": url})
         await self._call("Player.Open", item={"playlistid": 0}, options={"repeat": "one"})

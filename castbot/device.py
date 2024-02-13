@@ -11,7 +11,7 @@ from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 
 from . import devices
-from .utils import ConfigError
+from .utils import ConfigError, LocalToken
 
 
 class RequestHandler(abc.ABC):
@@ -37,7 +37,7 @@ class Device(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def play(self, url: str, title: str, local_token: int):
+    async def play(self, url: str, title: str, local_token: LocalToken):
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -45,7 +45,7 @@ class Device(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def on_close(self, local_token: int):
+    def on_close(self, local_token: LocalToken):
         raise NotImplementedError
 
     def __repr__(self):

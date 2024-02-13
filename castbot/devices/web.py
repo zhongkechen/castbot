@@ -5,7 +5,7 @@ from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 
 from ..device import DeviceFinder, RoutersDefType, Device, RequestHandler
-from ..utils import secret_token
+from ..utils import secret_token, LocalToken
 
 __all__ = ["Finder"]
 
@@ -26,10 +26,10 @@ class WebDevice(Device):
     async def stop(self):
         self._url_to_play = None
 
-    async def on_close(self, local_token: int):
+    async def on_close(self, local_token: LocalToken):
         self._devices.pop(self._remote_token, None)
 
-    async def play(self, url: str, title: str, local_token: int):
+    async def play(self, url: str, title: str, local_token: LocalToken):
         self._url_to_play = url
 
     def manipulate_timestamp(self) -> float:

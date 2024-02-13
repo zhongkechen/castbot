@@ -34,11 +34,10 @@ from pyrogram.types import (
 from .http import Http, BotInterface
 from .device import DeviceFinderCollection, Device
 from .utils import (
-    secret_token,
-    serialize_token,
     NoDeviceException,
     ActionNotSupportedException,
     UnknownCallbackException,
+    LocalToken,
 )
 
 __all__ = ["Bot"]
@@ -53,10 +52,22 @@ class UserData:
         self.selected_device = selected_device
 
 
+class Button:
+    def __init__(self, text, status):
+        self.text = text
+        self.status = status
+
+
+PLAY_BUTTON = Button("PLAY", "Playing")
+STOP_BUTTON = Button("STOP", "Stopped")
+PAUSE_BUTTON = Button("PAUSE", "Paused")
+RESUME_BUTTON = Button("RESUME", "Resumed")
+
+
 class PlayingVideo:
     def __init__(
         self,
-        token: int,
+        local_token: LocalToken,
         user_id: int,
         http: Http,
         video_message: typing.Optional[Message] = None,
@@ -65,7 +76,7 @@ class PlayingVideo:
         link_message: typing.Optional[Message] = None,
     ):
         self.http = http
-        self.token = token
+        self.local_token = local_token
         self.user_id = user_id
         self.video_message = video_message
         self.playing_device: typing.Optional[Device] = playing_device
@@ -89,10 +100,10 @@ class PlayingVideo:
         return f"for file <code>{self.video_message.id}</code>"
 
     def _gen_command_button(self, command):
-        return InlineKeyboardButton(command, f"c:{self.video_message.id}:{self.token}:{command}")
+        return InlineKeyboardButton(command, f"c:{self.local_token}:{command}")
 
     def _gen_device_button(self, device):
-        return InlineKeyboardButton(repr(device), f"s:{self.video_message.id}:{self.token}:{repr(device)}")
+        return InlineKeyboardButton(repr(device), f"s:{self.local_token}:{repr(device)}")
 
     async def send_stopped_control_message(self, remaining=None):
         buttons = [
@@ -138,7 +149,7 @@ class PlayingVideo:
         if not self.playing_device:
             raise NoDeviceException
 
-        local_token, uri = self.http.add_remote_token(self.video_message.id, self.token)
+        uri = self.http.add_remote_token(self.local_token)
 
         try:
             filename = pyrogram_filename(self.video_message)
@@ -147,7 +158,7 @@ class PlayingVideo:
 
         # noinspection PyBroadException
         await self.playing_device.stop()
-        await self.playing_device.play(uri, str(filename), local_token)
+        await self.playing_device.play(uri, str(filename), self.local_token)
         await self.send_playing_control_message()
 
     async def stop(self):
@@ -218,7 +229,7 @@ class Bot(BotInterface):
         self._http = http
         self._finders = finders
         self._user_data: typing.Dict[int, UserData] = {}
-        self._playing_videos: typing.Dict[int, PlayingVideo] = {}
+        self._playing_videos: typing.Dict[LocalToken, PlayingVideo] = {}
 
         self.prepare()
 
@@ -242,12 +253,12 @@ class Bot(BotInterface):
 
         return user_data.selected_device
 
-    async def _reconstruct_playing_video(self, message_id, token, callback: CallbackQuery):
+    async def _reconstruct_playing_video(self, local_token: LocalToken, callback: CallbackQuery):
         # re-construct PlayVideo when the bot is restarted
         user_id = callback.from_user.id
         control_message = callback.message
-        video_message: Message = await self.get_message(message_id)
-        if control_message.reply_to_message_id and control_message.reply_to_message_id != message_id:
+        video_message: Message = await self.get_message(local_token.message_id)
+        if control_message.reply_to_message_id and control_message.reply_to_message_id != local_token.message_id:
             link_message = await self.get_message(control_message.reply_to_message_id)
         else:
             link_message = None
@@ -256,7 +267,7 @@ class Bot(BotInterface):
             PlayingVideo.parse_device_str(control_message.text)
         ) or self._get_user_device(user_id)
         return PlayingVideo(
-            token,
+            local_token,
             user_id,
             self._http,
             video_message=video_message,
@@ -267,12 +278,15 @@ class Bot(BotInterface):
 
     async def _callback_handler(self, _: Client, message: CallbackQuery):
         data = message.data
-        _, message_id, token, payload = data.split(":")
-        message_id = int(message_id)
-        token = int(token)
-        local_token = serialize_token(message_id, token)
+        if data.count(":") == 3:
+            # the old format
+            _, message_id, token, payload = data.split(":")
+            local_token = LocalToken(message_id, token)
+        else:
+            _, local_token_raw, payload = data.split(":")
+            local_token = LocalToken.deserialize(local_token_raw)
         if local_token not in self._playing_videos:
-            self._playing_videos[local_token] = await self._reconstruct_playing_video(message_id, token, message)
+            self._playing_videos[local_token] = await self._reconstruct_playing_video(local_token, message)
 
         playing_video = self._playing_videos[local_token]
 
@@ -325,11 +339,10 @@ class Bot(BotInterface):
     async def _new_document(self, _: Client, video_message: Message, link_message=None, control_message=None):
         user_id = (link_message or video_message).from_user.id
         device = self._get_user_device(user_id)
-        token = secret_token()
-        local_token = serialize_token(video_message.id, token)
+        local_token = LocalToken(video_message.id)
 
         self._playing_videos[local_token] = PlayingVideo(
-            token,
+            local_token,
             user_id,
             self._http,
             video_message=video_message,
@@ -380,7 +393,7 @@ class Bot(BotInterface):
         url = result.group(0)
         asyncio.create_task(self._download_url(_, message, url))
 
-    async def handle_closed(self, remains: float, local_token: int):
+    async def handle_closed(self, remains: float, local_token: LocalToken):
         if local_token in self._playing_videos:
             playing_video = self._playing_videos[local_token]
             device = playing_video.playing_device

@@ -12,7 +12,7 @@ from aiohttp.web_response import Response, StreamResponse
 from pyrogram.raw.types import MessageMediaDocument, Document, DocumentAttributeFilename, Message
 
 from .device import DeviceFinderCollection
-from .utils import serialize_token
+from .utils import LocalToken
 
 __all__ = ["Http", "BotInterface"]
 
@@ -21,7 +21,7 @@ _RANGE_REGEX = re.compile(r"bytes=([0-9]+)-([0-9]+)?")
 
 class BotInterface(abc.ABC):
     @abc.abstractmethod
-    async def handle_closed(self, remains: float, local_token: int):
+    async def handle_closed(self, remains: float, local_token: LocalToken):
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -117,10 +117,10 @@ class Http:
         self._block_size = int(config.get("block_size", 1048576))
         self._finders = finders
 
-        self._tokens: typing.Set[int] = set()
-        self._downloaded_blocks: typing.Dict[int, typing.Set[int]] = {}
-        self._stream_debounce: typing.Dict[int, AsyncDebounce] = {}
-        self._stream_transports: typing.Dict[int, typing.Set[asyncio.Transport]] = {}
+        self._tokens: typing.Set[LocalToken] = set()
+        self._downloaded_blocks: typing.Dict[LocalToken, typing.Set[int]] = {}
+        self._stream_debounce: typing.Dict[LocalToken, AsyncDebounce] = {}
+        self._stream_transports: typing.Dict[LocalToken, typing.Set[asyncio.Transport]] = {}
         self._bot: typing.Optional[BotInterface] = None
 
     def set_bot(self, handler: BotInterface):
@@ -149,13 +149,12 @@ class Http:
         finally:
             await runner.cleanup()
 
-    def add_remote_token(self, message_id: int, partial_remote_token: int) -> (int, str):
-        local_token = serialize_token(message_id, partial_remote_token)
-        uri = f"http://{self._listen_host}:{self._listen_port}/stream/{message_id}/{partial_remote_token}"
+    def add_remote_token(self, local_token: LocalToken) -> str:
+        uri = f"http://{self._listen_host}:{self._listen_port}/stream/{local_token.message_id}/{local_token.token}"
         self._tokens.add(local_token)
-        return local_token, uri
+        return uri
 
-    def _check_local_token(self, local_token: int) -> bool:
+    def _check_local_token(self, local_token: LocalToken) -> bool:
         return local_token in self._tokens
 
     @staticmethod
@@ -190,7 +189,7 @@ class Http:
         self._write_access_control_headers(result)
         return result
 
-    def _feed_timeout(self, local_token: int, size: int):
+    def _feed_timeout(self, local_token: LocalToken, size: int):
         debounce = self._stream_debounce.setdefault(
             local_token,
             AsyncDebounce(self._timeout_handler, self._request_gone_timeout),
@@ -198,18 +197,18 @@ class Http:
 
         debounce.update_args(local_token, size)
 
-    def _feed_downloaded_blocks(self, block_id: int, local_token: int):
+    def _feed_downloaded_blocks(self, block_id: int, local_token: LocalToken):
         downloaded_blocks = self._downloaded_blocks.setdefault(local_token, set())
         downloaded_blocks.add(block_id)
 
-    def _feed_stream_transport(self, local_token: int, transport: asyncio.Transport):
+    def _feed_stream_transport(self, local_token: LocalToken, transport: asyncio.Transport):
         transports = self._stream_transports.setdefault(local_token, set())
         transports.add(transport)
 
-    def _get_stream_transports(self, local_token: int) -> typing.Set[asyncio.Transport]:
+    def _get_stream_transports(self, local_token: LocalToken) -> typing.Set[asyncio.Transport]:
         return self._stream_transports[local_token] if local_token in self._stream_transports else set()
 
-    async def _timeout_handler(self, local_token: int, size: int):
+    async def _timeout_handler(self, local_token: LocalToken, size: int):
         _debounce: typing.Optional[AsyncDebounce] = None  # avoid garbage collector
 
         if all(t.is_closing() for t in self._get_stream_transports(local_token)):
@@ -251,12 +250,9 @@ class Http:
         if not _token.isdigit():
             return Response(status=401)
 
-        token = int(_token)
+        local_token = LocalToken(_message_id, _token)
         del _token
-        message_id = int(_message_id)
         del _message_id
-
-        local_token = serialize_token(message_id, token)
 
         if not self._check_local_token(local_token):
             return Response(status=403)
@@ -278,7 +274,7 @@ class Http:
             return Response(status=500)
 
         try:
-            message = await self._bot.get_message(int(message_id))
+            message = await self._bot.get_message(local_token.message_id)
         except ValueError:
             return Response(status=404)
 

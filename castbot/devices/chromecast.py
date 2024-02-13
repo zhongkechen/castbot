@@ -5,6 +5,7 @@ import typing
 
 import catt.api
 
+from ..utils import LocalToken
 from ..device import Device, DeviceFinder
 
 __all__ = ["Finder"]
@@ -29,10 +30,10 @@ class ChromecastDevice(Device):
     async def stop(self):
         pass
 
-    async def on_close(self, local_token: int):
+    async def on_close(self, local_token: LocalToken):
         await run_method_in_executor(self._device.stop)
 
-    async def play(self, url: str, title: str, local_token: int):
+    async def play(self, url: str, title: str, local_token: LocalToken):
         await run_method_in_executor(self._device.play_url, url, title=title)
 
     async def resume(self):
