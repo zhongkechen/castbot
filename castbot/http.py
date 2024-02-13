@@ -123,9 +123,6 @@ class Http:
         self._stream_transports: typing.Dict[int, typing.Set[asyncio.Transport]] = {}
         self._bot: typing.Optional[BotInterface] = None
 
-    def build_streaming_uri(self, msg_id: int, token: int) -> str:
-        return f"http://{self._listen_host}:{self._listen_port}/stream/{msg_id}/{token}"
-
     def set_bot(self, handler: BotInterface):
         self._bot = handler
 
@@ -152,10 +149,11 @@ class Http:
         finally:
             await runner.cleanup()
 
-    def add_remote_token(self, message_id: int, partial_remote_token: int) -> int:
+    def add_remote_token(self, message_id: int, partial_remote_token: int) -> (int, str):
         local_token = serialize_token(message_id, partial_remote_token)
+        uri = f"http://{self._listen_host}:{self._listen_port}/stream/{message_id}/{partial_remote_token}"
         self._tokens.add(local_token)
-        return local_token
+        return local_token, uri
 
     def _check_local_token(self, local_token: int) -> bool:
         return local_token in self._tokens
@@ -183,12 +181,12 @@ class Http:
     async def _health_check_handler(self, _: Request) -> typing.Optional[Response]:
         try:
             await self._bot.health_check()
-            return Response(status=200, text="ok")
+            return Response(text="ok")
         except ConnectionError:
             return Response(status=500, text="gone")
 
     async def _upnp_discovery_handler(self, _: Request) -> typing.Optional[Response]:
-        result = Response(status=200)
+        result = Response()
         self._write_access_control_headers(result)
         return result
 

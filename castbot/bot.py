@@ -58,11 +58,13 @@ class PlayingVideo:
         self,
         token: int,
         user_id: int,
+        http: Http,
         video_message: typing.Optional[Message] = None,
         playing_device: typing.Optional[Device] = None,
         control_message: typing.Optional[Message] = None,
         link_message: typing.Optional[Message] = None,
     ):
+        self.http = http
         self.token = token
         self.user_id = user_id
         self.video_message = video_message
@@ -128,12 +130,11 @@ class PlayingVideo:
         else:
             self.control_message = await self.video_message.reply(text, reply_markup=InlineKeyboardMarkup(buttons))
 
-    async def play(self, http: Http):
+    async def play(self):
         if not self.playing_device:
             raise NoDeviceException
 
-        uri = http.build_streaming_uri(self.video_message.id, self.token)
-        local_token = serialize_token(self.video_message.id, self.token)
+        local_token, uri = self.http.add_remote_token(self.video_message.id, self.token)
 
         try:
             filename = pyrogram_filename(self.video_message)
@@ -253,6 +254,7 @@ class Bot(BotInterface):
         return PlayingVideo(
             token,
             user_id,
+            self._http,
             video_message=video_message,
             playing_device=device,
             control_message=control_message,
@@ -294,8 +296,7 @@ class Bot(BotInterface):
 
         # async with async_timeout.timeout(self._finders.device_request_timeout) as timeout_context:
         if action == "PLAY":
-            self._http.add_remote_token(playing_video.video_message.id, playing_video.token)
-            await playing_video.play(self._http)
+            await playing_video.play()
             await message.answer("Playing")
         elif action == "STOP":
             await playing_video.stop()
@@ -327,6 +328,7 @@ class Bot(BotInterface):
         self._playing_videos[local_token] = PlayingVideo(
             token,
             user_id,
+            self._http,
             video_message=video_message,
             playing_device=device,
             control_message=control_message,
