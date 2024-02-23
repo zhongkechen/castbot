@@ -321,6 +321,3 @@ class Bot(BotClient):
 
         url = result.group(0)
         asyncio.create_task(self._download_url(_, message, url))
-
-    async def handle_closed(self, remains: float, local_token: LocalToken):
-        await self._playing_videos.handle_closed(remains, local_token)

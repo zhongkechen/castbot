@@ -4,7 +4,7 @@ import re
 import typing
 
 from pyrogram.errors import MessageNotModified
-from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
+from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 
 from .device import Device
 from .utils import LocalToken, NoDeviceException, ActionNotSupportedException
@@ -16,17 +16,25 @@ class PlayingVideos:
         self._http = http
         self._playing_videos: typing.Dict[LocalToken, PlayingVideo] = {}
 
+    def remove(self, playing_video: "PlayingVideo"):
+        local_token = playing_video.local_token
+        if local_token in self._playing_videos:
+            del self._playing_videos[local_token]
+
     def new_video(self, local_token: LocalToken, user_id, device, video_message, control_message, link_message):
         self._playing_videos[local_token] = PlayingVideo(
-            local_token,
-            user_id,
-            self._http,
+            local_token=local_token,
+            user_id=user_id,
+            playing_videos=self,
             playing_device=device,
             video_message=video_message,
             control_message=control_message,
             link_message=link_message,
         )
         return self._playing_videos[local_token]
+
+    def add_to_http(self, playing_video):
+        return self._http.add_remote_token(playing_video)
 
     async def reconstruct_playing_video(self, local_token: LocalToken, user_id, control_message, bot):
         if local_token in self._playing_videos:
@@ -57,19 +65,19 @@ class PlayingVideo:
         self,
         local_token: LocalToken,
         user_id: int,
-        http: Http,
+        playing_videos: PlayingVideos,
         playing_device: typing.Optional[Device] = None,
         video_message: typing.Optional[Message] = None,
         control_message: typing.Optional[Message] = None,
         link_message: typing.Optional[Message] = None,
     ):
-        self.http = http
         self.local_token = local_token
         self.user_id = user_id
         self.video_message = video_message
         self.playing_device: typing.Optional[Device] = playing_device
         self.control_message = control_message
         self.link_message = link_message
+        self.playing_videos = playing_videos
 
     def _gen_device_str(self):
         return (
@@ -135,7 +143,7 @@ class PlayingVideo:
         if not self.playing_device:
             raise NoDeviceException
 
-        uri = self.http.add_remote_token(self.local_token)
+        uri = self.playing_videos.add_to_http(self)
 
         try:
             filename = pyrogram_filename(self.video_message)
@@ -173,6 +181,12 @@ class PlayingVideo:
             await self.playing_device.resume()
             return await self.send_playing_control_message()
         raise ActionNotSupportedException
+
+    async def close(self, remains):
+        device = self.playing_device
+        await self.send_stopped_control_message(remaining=remains)
+        await device.on_close(self.local_token)
+        self.playing_videos.remove(self)
 
     async def select_device(self, device: Device):
         self.playing_device = device

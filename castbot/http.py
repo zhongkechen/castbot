@@ -20,9 +20,6 @@ _RANGE_REGEX = re.compile(r"bytes=([0-9]+)-([0-9]+)?")
 
 
 class BotInterface(abc.ABC):
-    @abc.abstractmethod
-    async def handle_closed(self, remains: float, local_token: LocalToken):
-        raise NotImplementedError
 
     @abc.abstractmethod
     async def health_check(self):
@@ -113,11 +110,11 @@ class Http:
     def __init__(self, config, finders: DeviceFinderCollection):
         self._listen_port = int(config["listen_port"])
         self._listen_host = str(config["listen_host"])
-        self._request_gone_timeout = int(config.get("request_gone_timeout", 900))
+        self._request_gone_timeout = int(config.get("request_gone_timeout", 10))
         self._block_size = int(config.get("block_size", 1048576))
         self._finders = finders
 
-        self._tokens: typing.Set[LocalToken] = set()
+        self._tokens: typing.Dict[LocalToken, typing.Any] = {}
         self._downloaded_blocks: typing.Dict[LocalToken, typing.Set[int]] = {}
         self._stream_debounce: typing.Dict[LocalToken, AsyncDebounce] = {}
         self._stream_transports: typing.Dict[LocalToken, typing.Set[asyncio.Transport]] = {}
@@ -149,9 +146,10 @@ class Http:
         finally:
             await runner.cleanup()
 
-    def add_remote_token(self, local_token: LocalToken) -> str:
+    def add_remote_token(self, playing_video) -> str:
+        local_token = playing_video.local_token
         uri = f"http://{self._listen_host}:{self._listen_port}/stream/{local_token.message_id}/{local_token.token}"
-        self._tokens.add(local_token)
+        self._tokens[local_token] = playing_video
         return uri
 
     def _check_local_token(self, local_token: LocalToken) -> bool:
@@ -214,14 +212,16 @@ class Http:
         if all(t.is_closing() for t in self._get_stream_transports(local_token)):
             blocks = (size // self._block_size) + 1
 
-            if local_token in self._tokens:
-                self._tokens.remove(local_token)
-
-            remain_blocks = blocks
-
             if local_token in self._downloaded_blocks:
                 remain_blocks = blocks - len(self._downloaded_blocks[local_token])
                 del self._downloaded_blocks[local_token]
+            else:
+                remain_blocks = blocks
+
+            if local_token in self._tokens:
+                remain_blocks_perceptual = remain_blocks / blocks * 100
+                await self._tokens[local_token].close(remain_blocks_perceptual)
+                del self._tokens[local_token]
 
             if local_token in self._stream_debounce:
                 _debounce = self._stream_debounce[local_token]
@@ -229,10 +229,6 @@ class Http:
 
             if local_token in self._stream_transports:
                 del self._stream_transports[local_token]
-
-            remain_blocks_perceptual = remain_blocks / blocks * 100
-            if isinstance(self._bot, BotInterface):
-                await self._bot.handle_closed(remain_blocks_perceptual, local_token)
 
         if local_token in self._stream_debounce:
             self._stream_debounce[local_token].reschedule()
