@@ -8,8 +8,6 @@ import pickle
 import re
 import typing
 
-import pyrogram
-import pyrogram.session
 from async_lru import alru_cache
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
@@ -23,13 +21,10 @@ from pyrogram.raw.functions.help import GetConfig
 from pyrogram.raw.functions.messages import GetMessages
 from pyrogram.raw.functions.upload import GetFile
 from pyrogram.raw.types import InputMessageID, InputDocumentFileLocation
+from pyrogram.raw.types import Message as RawMessage
 from pyrogram.raw.types.upload import File
-from pyrogram.types import (
-    Message,
-    CallbackQuery,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
-)
+from pyrogram.session import Session, Auth
+from pyrogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from .http import Http, BotInterface
 from .device import DeviceFinderCollection, Device
@@ -53,15 +48,21 @@ class UserData:
 
 
 class Button:
-    def __init__(self, text, status):
+    def __init__(self, prefix, text, status):
+        self.prefix = prefix
         self.text = text
         self.status = status
 
+    def get_button(self, local_token: LocalToken):
+        return InlineKeyboardButton(self.text, f"{self.prefix}:{local_token}:{self.text}")
 
-PLAY_BUTTON = Button("PLAY", "Playing")
-STOP_BUTTON = Button("STOP", "Stopped")
-PAUSE_BUTTON = Button("PAUSE", "Paused")
-RESUME_BUTTON = Button("RESUME", "Resumed")
+
+PLAY_BUTTON = Button("c", "PLAY", "Playing")
+STOP_BUTTON = Button("c", "STOP", "Stopped")
+PAUSE_BUTTON = Button("c", "PAUSE", "Paused")
+RESUME_BUTTON = Button("c", "RESUME", "Resumed")
+REFRESH_BUTTON = Button("c", "REFRESH", "REFRESH")
+DEVICE_BUTTON = Button("c", "DEVICE", "DEVICE")
 
 
 class PlayingVideo:
@@ -99,16 +100,13 @@ class PlayingVideo:
     def _gen_message_str(self):
         return f"for file <code>{self.video_message.id}</code>"
 
-    def _gen_command_button(self, command):
-        return InlineKeyboardButton(command, f"c:{self.local_token}:{command}")
-
     def _gen_device_button(self, device):
         return InlineKeyboardButton(repr(device), f"s:{self.local_token}:{repr(device)}")
 
     async def send_stopped_control_message(self, remaining=None):
         buttons = [
-            [self._gen_command_button("DEVICE")],
-            [self._gen_command_button("PLAY")],
+            [DEVICE_BUTTON.get_button(self.local_token)],
+            [PLAY_BUTTON.get_button(self.local_token)],
         ]
         if not remaining:
             text = f"Controller {self._gen_message_str()} {self._gen_device_str()}"
@@ -118,23 +116,24 @@ class PlayingVideo:
 
     async def send_playing_control_message(self):
         buttons = [
-            [self._gen_command_button("STOP")],
-            [self._gen_command_button("PAUSE")],
+            [STOP_BUTTON.get_button(self.local_token)],
+            [PAUSE_BUTTON.get_button(self.local_token)],
         ]
         text = f"Playing {self._gen_message_str()} {self._gen_device_str()}"
         await self.create_or_update_control_message(text, buttons)
 
     async def send_paused_control_message(self):
         buttons = [
-            [self._gen_command_button("STOP")],
-            [self._gen_command_button("RESUME")],
+            [STOP_BUTTON.get_button(self.local_token)],
+            [RESUME_BUTTON.get_button(self.local_token)],
         ]
         text = f"Paused {self._gen_message_str()} {self._gen_device_str()}"
         await self.create_or_update_control_message(text, buttons)
 
     async def send_select_device_message(self, devices):
-        buttons = [[self._gen_device_button(d)] for d in devices] + [[self._gen_command_button("REFRESH")]]
-        await self.create_or_update_control_message("Select a device", buttons)
+        device_buttons = [[Button("s", repr(d), repr(d)).get_button(self.local_token)] for d in devices]
+        refresh_button = [[REFRESH_BUTTON.get_button(self.local_token)]]
+        await self.create_or_update_control_message("Select a device", device_buttons + refresh_button)
 
     async def create_or_update_control_message(self, text, buttons):
         if self.control_message:
@@ -210,7 +209,7 @@ class Bot(BotInterface):
         self._api_hash = str(config["api_hash"])
         self._token = str(config["token"])
         self._file_fake_fw_wait = float(config.get("file_fake_fw_wait", 0.2))
-        self._client = pyrogram.Client(
+        self._client = Client(
             self._session_name,
             self._api_id,
             self._api_hash,
@@ -421,7 +420,7 @@ class Bot(BotInterface):
 
         message = messages.messages[0]
 
-        if not isinstance(message, pyrogram.raw.types.Message):
+        if not isinstance(message, RawMessage):
             raise ValueError(f"expected `Message`, found: `{type(message).__name__}`")
 
         return message
@@ -435,7 +434,7 @@ class Bot(BotInterface):
             logging.log(logging.ERROR, "main session not connected")
             raise ConnectionError()
 
-    async def get_block(self, message: pyrogram.raw.types.Message, offset: int, block_size: int) -> bytes:
+    async def get_block(self, message: RawMessage, offset: int, block_size: int) -> bytes:
         session = self._client.media_sessions.get(message.media.document.dc_id)
 
         request = GetFile(
@@ -473,7 +472,7 @@ class Bot(BotInterface):
 
         for dc_id in dc_ids:
             session = functools.partial(
-                pyrogram.session.Session,
+                Session,
                 self._client,
                 dc_id,
                 is_media=True,
@@ -484,7 +483,7 @@ class Bot(BotInterface):
                 if dc_id not in keys:
                     exported_auth = await self._client.invoke(ExportAuthorization(dc_id=dc_id))
 
-                    auth = pyrogram.session.Auth(self._client, dc_id, False)
+                    auth = Auth(self._client, dc_id, False)
                     auth_key = await auth.create()
 
                     session = session(auth_key)
