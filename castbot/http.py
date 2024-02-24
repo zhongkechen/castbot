@@ -11,7 +11,6 @@ from aiohttp.web_response import Response, StreamResponse
 from pyrogram.raw.types import MessageMediaDocument, Document, DocumentAttributeFilename, Message
 
 from .client import BotClient
-from .device import DeviceFinderCollection
 from .utils import LocalToken
 
 __all__ = ["Http"]
