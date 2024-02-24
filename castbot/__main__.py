@@ -10,7 +10,7 @@ try:
 except ImportError:
     import toml as tomllib
 
-from castbot import Http, Bot, DeviceFinderCollection, Downloader, PlayingVideos
+from castbot import Http, Bot, DeviceFinderCollection, Downloader, PlayingVideos, BotClient
 
 
 def open_config(parser: argparse.ArgumentParser, arg: str):
@@ -30,13 +30,13 @@ def open_config(parser: argparse.ArgumentParser, arg: str):
 
 async def async_main(config):
     device_finder = DeviceFinderCollection(config["devices"])
-    http = Http(config["http"], device_finder)
+    bot_client = BotClient(config["bot"])
+    http = Http(config["http"], bot_client, device_finder)
     downloader = Downloader(config.get("downloader", {}))
     playing_videos = PlayingVideos(http)
-    bot = Bot(config["bot"], downloader, playing_videos, device_finder)
-    http.set_bot(bot)
+    bot = Bot(config["bot"], downloader, bot_client, playing_videos, device_finder)
 
-    await asyncio.gather(bot.start(), http.start())
+    await asyncio.gather(bot_client.start(), http.start())
 
 
 async def health_check(config):

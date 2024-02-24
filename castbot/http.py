@@ -1,4 +1,3 @@
-import abc
 import asyncio
 import logging
 import os.path
@@ -11,27 +10,13 @@ from aiohttp.web_request import Request
 from aiohttp.web_response import Response, StreamResponse
 from pyrogram.raw.types import MessageMediaDocument, Document, DocumentAttributeFilename, Message
 
+from .client import BotClient
 from .device import DeviceFinderCollection
 from .utils import LocalToken
 
-__all__ = ["Http", "BotInterface"]
+__all__ = ["Http"]
 
 _RANGE_REGEX = re.compile(r"bytes=([0-9]+)-([0-9]+)?")
-
-
-class BotInterface(abc.ABC):
-
-    @abc.abstractmethod
-    async def health_check(self):
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    async def get_block(self, message: Message, offset: int, block_size: int) -> bytes:
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    async def get_message(self, message_id: int) -> Message:
-        raise NotImplementedError
 
 
 def mtproto_filename(message: Message) -> str:
@@ -107,10 +92,10 @@ def parse_http_range(http_range: str, block_size: int) -> typing.Tuple[int, int,
 
 
 class Http:
-    def __init__(self, config, finders: DeviceFinderCollection):
+    def __init__(self, config, bot_client: BotClient, finders: DeviceFinderCollection):
         self._listen_port = int(config["listen_port"])
         self._listen_host = str(config["listen_host"])
-        self._request_gone_timeout = int(config.get("request_gone_timeout", 10))
+        self._request_gone_timeout = int(config.get("request_gone_timeout", 900))
         self._block_size = int(config.get("block_size", 1048576))
         self._finders = finders
 
@@ -118,10 +103,7 @@ class Http:
         self._downloaded_blocks: typing.Dict[LocalToken, typing.Set[int]] = {}
         self._stream_debounce: typing.Dict[LocalToken, AsyncDebounce] = {}
         self._stream_transports: typing.Dict[LocalToken, typing.Set[asyncio.Transport]] = {}
-        self._bot: typing.Optional[BotInterface] = None
-
-    def set_bot(self, handler: BotInterface):
-        self._bot = handler
+        self._bot_client = bot_client
 
     async def start(self):
         app = web.Application()
@@ -177,7 +159,7 @@ class Http:
 
     async def _health_check_handler(self, _: Request) -> typing.Optional[Response]:
         try:
-            await self._bot.health_check()
+            await self._bot_client.health_check()
             return Response(text="ok")
         except ConnectionError:
             return Response(status=500, text="gone")
@@ -270,7 +252,7 @@ class Http:
             return Response(status=500)
 
         try:
-            message = await self._bot.get_message(local_token.message_id)
+            message = await self._bot_client.get_message(local_token.message_id)
         except ValueError:
             return Response(status=404)
 
@@ -308,7 +290,7 @@ class Http:
         try:
             while offset < max_size:
                 self._feed_timeout(local_token, size)
-                block = await self._bot.get_block(message, offset, self._block_size)
+                block = await self._bot_client.get_block(message, offset, self._block_size)
                 new_offset = offset + len(block)
 
                 if data_to_skip:
