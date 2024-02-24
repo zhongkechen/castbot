@@ -11,7 +11,7 @@ from pyrogram.types import Message, CallbackQuery
 
 from .client import BotClient
 from .video import PlayingVideos
-from .device import DeviceFinderCollection, Device
+from .device import DeviceFinderCollection
 from .utils import (
     NoDeviceException,
     ActionNotSupportedException,
