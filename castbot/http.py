@@ -92,12 +92,12 @@ def parse_http_range(http_range: str, block_size: int) -> typing.Tuple[int, int,
 
 
 class Http:
-    def __init__(self, config, bot_client: BotClient, finders: DeviceFinderCollection):
+    def __init__(self, config, bot_client: BotClient, extra_routes):
         self._listen_port = int(config["listen_port"])
         self._listen_host = str(config["listen_host"])
         self._request_gone_timeout = int(config.get("request_gone_timeout", 900))
         self._block_size = int(config.get("block_size", 1048576))
-        self._finders = finders
+        self._extra_routes = list(extra_routes)
 
         self._tokens: typing.Dict[LocalToken, typing.Any] = {}
         self._downloaded_blocks: typing.Dict[LocalToken, typing.Set[int]] = {}
@@ -113,7 +113,8 @@ class Http:
         app.router.add_put("/stream/{message_id}/{token}", self._upnp_discovery_handler)
         app.router.add_get("/healthcheck", self._health_check_handler)
 
-        for method, path, handle in self._finders.get_all_routers():
+        for method, path, handle in self._extra_routes:
+            logging.info("extra route: %s %s", method, path)
             app.router.add_route(method, path, handle)
 
         runner = web.AppRunner(app, handle_signals=True)

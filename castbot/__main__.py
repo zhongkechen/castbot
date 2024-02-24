@@ -31,12 +31,12 @@ def open_config(parser: argparse.ArgumentParser, arg: str):
 async def async_main(config):
     device_finder = DeviceFinderCollection(config["devices"])
     bot_client = BotClient(config["bot"])
-    http = Http(config["http"], bot_client, device_finder)
+    http = Http(config["http"], bot_client, device_finder.get_all_routers())
     downloader = Downloader(config.get("downloader", {}))
     playing_videos = PlayingVideos(http)
     bot = Bot(config["bot"], downloader, bot_client, playing_videos, device_finder)
 
-    await asyncio.gather(bot_client.start(), http.start())
+    await asyncio.gather(bot.start(), http.start())
 
 
 async def health_check(config):

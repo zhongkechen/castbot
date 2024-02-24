@@ -51,9 +51,7 @@ class Bot:
         self._finders = finders
         self._user_data: typing.Dict[int, UserData] = {}
 
-        self.prepare()
-
-    def prepare(self):
+    async def start(self):
         admin_filter = filters.chat(self._admins) & filters.private
         self._bot_client.register(MessageHandler(self._new_document, filters.document & admin_filter))
         self._bot_client.register(MessageHandler(self._new_document, filters.video & admin_filter))
@@ -65,6 +63,7 @@ class Bot:
 
         admin_filter_inline = create(lambda _, __, m: m.from_user.id in self._admins)
         self._bot_client.register(CallbackQueryHandler(self._callback_handler, admin_filter_inline))
+        await self._bot_client.start()
 
     def _get_user_device(self, user_id):
         user_data = self._user_data.get(user_id)
