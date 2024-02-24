@@ -6,15 +6,25 @@ import typing
 from pyrogram.errors import MessageNotModified
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 
-from .device import Device
+from .client import BotClient
+from .device import Device, DeviceFinderCollection
 from .utils import LocalToken, NoDeviceException, ActionNotSupportedException
 from .http import Http
 
 
+class UserData:
+    selected_device: typing.Optional[Device] = None
+
+    def __init__(self, selected_device):
+        self.selected_device = selected_device
+
+
 class PlayingVideos:
-    def __init__(self, http: Http):
+    def __init__(self, http: Http, device_finders: DeviceFinderCollection):
         self._http = http
         self._playing_videos: typing.Dict[LocalToken, PlayingVideo] = {}
+        self._device_finders = device_finders
+        self._user_data: typing.Dict[int, UserData] = {}
 
     def remove(self, playing_video: "PlayingVideo"):
         local_token = playing_video.local_token
@@ -36,18 +46,18 @@ class PlayingVideos:
     def add_to_http(self, playing_video):
         return self._http.add_remote_token(playing_video)
 
-    async def reconstruct_playing_video(self, local_token: LocalToken, user_id, control_message, bot):
+    async def reconstruct_playing_video(self, local_token: LocalToken, user_id, control_message, bot_client: BotClient):
         if local_token in self._playing_videos:
             return self._playing_videos[local_token]
         # re-construct PlayVideo when the bot is restarted
-        video_message: Message = await bot.get_message(local_token.message_id)
+        video_message: Message = await bot_client.get_message(local_token.message_id)
         if control_message.reply_to_message_id and control_message.reply_to_message_id != local_token.message_id:
-            link_message = await bot.get_message(control_message.reply_to_message_id)
+            link_message = await bot_client.get_message(control_message.reply_to_message_id)
         else:
             link_message = None
 
-        device_name = PlayingVideo.parse_device_str(control_message.text)
-        device = await bot.find_device(device_name, user_id)
+        device_name = PlayingVideo.parse_device_str(control_message.text) or self.get_user_device(user_id)
+        device = await self._device_finders.find_device_by_name(device_name)
 
         return self.new_video(local_token, user_id, device, video_message, control_message, link_message)
 
@@ -58,6 +68,18 @@ class PlayingVideos:
             await playing_video.send_stopped_control_message(remaining=remains)
             del self._playing_videos[local_token]
             await device.on_close(local_token)
+
+    def get_user_device(self, user_id):
+        user_data = self._user_data.get(user_id)
+        if not user_data or not user_data.selected_device:
+            return None
+
+        return user_data.selected_device
+
+    def set_user_device(self, user_id, device):
+        user_data = self._user_data.get(user_id) or UserData(device)
+        user_data.selected_device = device
+        self._user_data[user_id] = user_data
 
 
 class PlayingVideo:
@@ -190,6 +212,7 @@ class PlayingVideo:
 
     async def select_device(self, device: Device):
         self.playing_device = device
+        self.playing_videos.set_user_device(self.user_id, device)
         await self.send_stopped_control_message()
 
 

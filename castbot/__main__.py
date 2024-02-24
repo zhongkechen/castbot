@@ -33,7 +33,7 @@ async def async_main(config):
     bot_client = BotClient(config["bot"])
     http = Http(config["http"], bot_client, device_finder.get_all_routers())
     downloader = Downloader(config.get("downloader", {}))
-    playing_videos = PlayingVideos(http)
+    playing_videos = PlayingVideos(http, device_finder)
     bot = Bot(config["bot"], downloader, bot_client, playing_videos, device_finder)
 
     await asyncio.gather(bot.start(), http.start())

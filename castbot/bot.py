@@ -3,7 +3,6 @@ import logging
 import os
 import os.path
 import re
-import typing
 
 from pyrogram import Client, filters
 from pyrogram.filters import create
@@ -25,13 +24,6 @@ __all__ = ["Bot"]
 _URL_PATTERN = r"(http|https):\/\/([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:\/~+#-]*[\w@?^=%&\/~+#-])"
 
 
-class UserData:
-    selected_device: typing.Optional[Device] = None
-
-    def __init__(self, selected_device):
-        self.selected_device = selected_device
-
-
 class Bot:
     def __init__(self,
                  config,
@@ -49,7 +41,6 @@ class Bot:
 
         self._playing_videos = playing_videos
         self._finders = finders
-        self._user_data: typing.Dict[int, UserData] = {}
         self._download_tasks = set()
 
     async def start(self):
@@ -66,16 +57,6 @@ class Bot:
         self._bot_client.register(CallbackQueryHandler(self._callback_handler, admin_filter_inline))
         await self._bot_client.start()
 
-    def _get_user_device(self, user_id):
-        user_data = self._user_data.get(user_id)
-        if not user_data or not user_data.selected_device:
-            return None
-
-        return user_data.selected_device
-
-    def find_device(self, device_name, user_id):
-        return self._finders.find_device_by_name(device_name) or self._get_user_device(user_id)
-
     async def _callback_handler(self, _: Client, message: CallbackQuery):
         data = message.data
         if data.count(":") == 3:
@@ -88,7 +69,7 @@ class Bot:
         playing_video = await self._playing_videos.reconstruct_playing_video(local_token,
                                                                              message.from_user.id,
                                                                              message.message,
-                                                                             self)
+                                                                             self._bot_client)
 
         if data.startswith("s:"):
             return await self._callback_select_device(playing_video, payload, message)
@@ -134,7 +115,6 @@ class Bot:
             return await message.answer("Wrong device")
 
         await playing_video.select_device(device)
-        self._user_data[playing_video.user_id] = UserData(device)  # Update the user's default device
 
     async def _new_document(self, _: Client, video_message: Message, link_message=None, control_message=None):
         user_id = (link_message or video_message).from_user.id
