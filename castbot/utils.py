@@ -32,7 +32,7 @@ class LocalToken:
 
 
 def secret_token(nbytes: int = 8) -> int:
-    return int.from_bytes(secrets.token_bytes(nbytes=nbytes), "big")
+    return int.from_bytes(secrets.token_bytes(nbytes=nbytes))
 
 
 class NoDeviceException(Exception):

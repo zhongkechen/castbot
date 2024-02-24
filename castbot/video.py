@@ -150,13 +150,13 @@ class PlayingVideo:
         except TypeError:
             filename = "None"
 
-        # noinspection PyBroadException
         await self.playing_device.stop()
         await self.playing_device.play(uri, str(filename), self.local_token)
         await self.send_playing_control_message()
 
     async def stop(self):
         if self.playing_device:
+            # noinspection PyBroadException
             try:
                 await self.playing_device.stop()
             except Exception:

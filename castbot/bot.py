@@ -50,6 +50,7 @@ class Bot:
         self._playing_videos = playing_videos
         self._finders = finders
         self._user_data: typing.Dict[int, UserData] = {}
+        self._download_tasks = set()
 
     async def start(self):
         admin_filter = filters.chat(self._admins) & filters.private
@@ -186,5 +187,7 @@ class Bot:
         if not result:
             return await message.reply("Not a supported link")
 
-        url = result.group(0)
-        asyncio.create_task(self._download_url(_, message, url))
+        url = result.group()
+        task = asyncio.create_task(self._download_url(_, message, url))
+        self._download_tasks.add(task)
+        task.add_done_callback(self._download_tasks.discard)
