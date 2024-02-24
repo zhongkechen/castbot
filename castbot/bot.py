@@ -118,12 +118,10 @@ class Bot:
 
     async def _new_document(self, _: Client, video_message: Message, link_message=None, control_message=None):
         user_id = (link_message or video_message).from_user.id
-        device = self._get_user_device(user_id)
         local_token = LocalToken(video_message.id)
 
         video = self._playing_videos.new_video(local_token,
                                                user_id,
-                                               device,
                                                video_message,
                                                control_message,
                                                link_message)

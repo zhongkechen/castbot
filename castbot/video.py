@@ -31,7 +31,8 @@ class PlayingVideos:
         if local_token in self._playing_videos:
             del self._playing_videos[local_token]
 
-    def new_video(self, local_token: LocalToken, user_id, device, video_message, control_message, link_message):
+    def new_video(self, local_token: LocalToken, user_id, video_message, control_message, link_message):
+        device = self.get_user_device(user_id)
         self._playing_videos[local_token] = PlayingVideo(
             local_token=local_token,
             user_id=user_id,
