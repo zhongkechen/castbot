@@ -31,8 +31,8 @@ class PlayingVideos:
         if local_token in self._playing_videos:
             del self._playing_videos[local_token]
 
-    def new_video(self, local_token: LocalToken, user_id, video_message, control_message, link_message):
-        device = self.get_user_device(user_id)
+    def new_video(self, local_token: LocalToken, user_id, video_message, control_message, link_message, device=None):
+        device = device or self.get_user_device(user_id)
         self._playing_videos[local_token] = PlayingVideo(
             local_token=local_token,
             user_id=user_id,
@@ -60,7 +60,7 @@ class PlayingVideos:
         device_name = PlayingVideo.parse_device_str(control_message.text) or self.get_user_device(user_id)
         device = await self._device_finders.find_device_by_name(device_name)
 
-        return self.new_video(local_token, user_id, device, video_message, control_message, link_message)
+        return self.new_video(local_token, user_id, video_message, control_message, link_message, device=device)
 
     async def handle_closed(self, remains: float, local_token: LocalToken):
         if local_token in self._playing_videos:
