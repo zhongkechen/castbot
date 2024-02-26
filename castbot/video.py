@@ -6,6 +6,7 @@ import typing
 from pyrogram.errors import MessageNotModified
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 
+from .button import DeviceSelectButton, PlayButton, StopButton, PauseButton, ResumeButton, RefreshButton, DeviceButton
 from .client import BotClient
 from .device import Device, DeviceFinderCollection
 from .utils import LocalToken, NoDeviceException, ActionNotSupportedException
@@ -20,10 +21,11 @@ class UserData:
 
 
 class PlayingVideos:
-    def __init__(self, http: Http, device_finders: DeviceFinderCollection):
+    def __init__(self, http: Http, device_finders: DeviceFinderCollection, bot_client: BotClient):
         self._http = http
-        self._playing_videos: typing.Dict[LocalToken, PlayingVideo] = {}
         self._device_finders = device_finders
+        self._bot_client = bot_client
+        self._playing_videos: typing.Dict[LocalToken, PlayingVideo] = {}
         self._user_data: typing.Dict[int, UserData] = {}
 
     def remove(self, playing_video: "PlayingVideo"):
@@ -47,13 +49,13 @@ class PlayingVideos:
     def add_to_http(self, playing_video):
         return self._http.add_remote_token(playing_video)
 
-    async def reconstruct_playing_video(self, local_token: LocalToken, user_id, control_message, bot_client: BotClient):
+    async def reconstruct_playing_video(self, local_token: LocalToken, user_id, control_message):
         if local_token in self._playing_videos:
             return self._playing_videos[local_token]
         # re-construct PlayVideo when the bot is restarted
-        video_message: Message = await bot_client.get_message(local_token.message_id)
+        video_message: Message = await self._bot_client.get_message(local_token.message_id)
         if control_message.reply_to_message_id and control_message.reply_to_message_id != local_token.message_id:
-            link_message = await bot_client.get_message(control_message.reply_to_message_id)
+            link_message = await self._bot_client.get_message(control_message.reply_to_message_id)
         else:
             link_message = None
 
@@ -123,8 +125,8 @@ class PlayingVideo:
 
     async def send_stopped_control_message(self, remaining=None):
         buttons = [
-            [DEVICE_BUTTON.get_button(self.local_token)],
-            [PLAY_BUTTON.get_button(self.local_token)],
+            [DeviceButton(self).get_button()],
+            [PlayButton(self).get_button()],
         ]
         if not remaining:
             text = f"Controller {self._gen_message_str()} {self._gen_device_str()}"
@@ -134,23 +136,23 @@ class PlayingVideo:
 
     async def send_playing_control_message(self):
         buttons = [
-            [STOP_BUTTON.get_button(self.local_token)],
-            [PAUSE_BUTTON.get_button(self.local_token)],
+            [StopButton(self).get_button()],
+            [PauseButton(self).get_button()],
         ]
         text = f"Playing {self._gen_message_str()} {self._gen_device_str()}"
         await self.create_or_update_control_message(text, buttons)
 
     async def send_paused_control_message(self):
         buttons = [
-            [STOP_BUTTON.get_button(self.local_token)],
-            [RESUME_BUTTON.get_button(self.local_token)],
+            [StopButton(self).get_button()],
+            [ResumeButton(self).get_button()],
         ]
         text = f"Paused {self._gen_message_str()} {self._gen_device_str()}"
         await self.create_or_update_control_message(text, buttons)
 
     async def send_select_device_message(self, devices):
-        device_buttons = [[Button("s", repr(d), repr(d)).get_button(self.local_token)] for d in devices]
-        refresh_button = [[REFRESH_BUTTON.get_button(self.local_token)]]
+        device_buttons = [[DeviceSelectButton(repr(d), self).get_button()] for d in devices]
+        refresh_button = [[RefreshButton(self).get_button()]]
         await self.create_or_update_control_message("Select a device", device_buttons + refresh_button)
 
     async def create_or_update_control_message(self, text, buttons):
@@ -169,7 +171,7 @@ class PlayingVideo:
         uri = self.playing_videos.add_to_http(self)
 
         try:
-            filename = pyrogram_filename(self.video_message)
+            filename = self.pyrogram_filename(self.video_message)
         except TypeError:
             filename = "None"
 
@@ -216,30 +218,12 @@ class PlayingVideo:
         self.playing_videos.set_user_device(self.user_id, device)
         await self.send_stopped_control_message()
 
-
-def pyrogram_filename(message: Message) -> str:
-    named_media_types = ("document", "video", "audio", "video_note", "animation")
-    try:
-        return next(
-            getattr(message, t, None).file_name for t in named_media_types if getattr(message, t, None) is not None
-        )
-    except StopIteration as error:
-        raise TypeError() from error
-
-
-class Button:
-    def __init__(self, prefix, text, status):
-        self.prefix = prefix
-        self.text = text
-        self.status = status
-
-    def get_button(self, local_token: LocalToken):
-        return InlineKeyboardButton(self.text, f"{self.prefix}:{local_token}:{self.text}")
-
-
-PLAY_BUTTON = Button("c", "PLAY", "Playing")
-STOP_BUTTON = Button("c", "STOP", "Stopped")
-PAUSE_BUTTON = Button("c", "PAUSE", "Paused")
-RESUME_BUTTON = Button("c", "RESUME", "Resumed")
-REFRESH_BUTTON = Button("c", "REFRESH", "REFRESH")
-DEVICE_BUTTON = Button("c", "DEVICE", "DEVICE")
+    @staticmethod
+    def pyrogram_filename(message: Message) -> str:
+        named_media_types = ("document", "video", "audio", "video_note", "animation")
+        try:
+            return next(
+                getattr(message, t, None).file_name for t in named_media_types if getattr(message, t, None) is not None
+            )
+        except StopIteration as error:
+            raise TypeError() from error
