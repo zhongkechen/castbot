@@ -86,7 +86,7 @@ class DeviceMenuButton(Button):
     @classmethod
     async def from_data(cls, data, playing_videos, user_id, message, finders):
         prefix, local_token, action = parse_data(data)
-        if prefix != cls.PREFIX and prefix != cls.OLD_PREFIX:
+        if prefix not in [cls.PREFIX, cls.OLD_PREFIX]:
             return None
         if action not in cls.ACTIONS:
             return None
