@@ -11,10 +11,10 @@ aiohttp = "^3.9"
 async-lru = "^2.0"
 async-timeout = "^4.0"
 catt = "^0.12"
-async-upnp-client = "^0.38"
+async-upnp-client = "^0.39"
 toml = {version="^0.10", python="<3.11"}
 you-get = "^0.4"
-yt-dlp = "^2023.11.16"
+yt-dlp = "^2024.7.16"
 pyrogram = "^2.0"
 tgcrypto = "^1.2"
 
