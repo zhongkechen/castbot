@@ -99,7 +99,7 @@ class BotClient:
         await self._client.start()
 
         config = await self._client.invoke(GetConfig())
-        dc_ids = [x.id for x in config.dc_options]
+        dc_ids = set(x.id for x in config.dc_options)
         keys_path = self._session_name + ".keys"
 
         if os.path.exists(keys_path):
