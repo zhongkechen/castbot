@@ -61,13 +61,16 @@ def entry_point():
     args = parser.parse_args()
 
     if args.verbose == 0:
-        logging.basicConfig(level=logging.ERROR)
+        logging_level = logging.ERROR
     elif args.verbose == 1:
-        logging.basicConfig(level=logging.WARNING)
+        logging_level = logging.WARNING
     elif args.verbose == 2:
-        logging.basicConfig(level=logging.INFO)
+        logging_level = logging.INFO
     else:
-        logging.basicConfig(level=logging.DEBUG)
+        logging_level = logging.DEBUG
+
+    logging_format = "%(asctime)s %(levelname)-8s %(message)s"
+    logging.basicConfig(format=logging_format, level=logging_level)
 
     # pyrogram logging is too verbose
     logging.getLogger("pyrogram").setLevel(logging.WARNING)
