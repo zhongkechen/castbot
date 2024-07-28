@@ -151,7 +151,9 @@ class Http:
         result.headers.setdefault("Access-Control-Allow-Headers", "Content-Type")
         result.headers.setdefault("transferMode.dlna.org", "Streaming")
         result.headers.setdefault("TimeSeekRange.dlna.org", "npt=0.00-")
-        result.headers.setdefault("contentFeatures.dlna.org", "DLNA.ORG_OP=01;DLNA.ORG_CI=0;")
+
+        # This line is causing Samsung TV to fail
+        # result.headers.setdefault("contentFeatures.dlna.org", "DLNA.ORG_OP=01;DLNA.ORG_CI=0;")
 
     @staticmethod
     def _write_filename_header(result: StreamResponse, filename: str):
@@ -239,9 +241,8 @@ class Http:
 
         if range_header is None:
             offset = 0
-            data_to_skip = False
+            data_to_skip = 0
             max_size = None
-
         else:
             try:
                 offset, data_to_skip, max_size = parse_http_range(range_header, self._block_size)
@@ -274,14 +275,24 @@ class Http:
         if max_size is None:
             max_size = size
 
-        stream = StreamResponse(status=206 if (read_after or (max_size != size)) else 200)
-        self._write_http_range_headers(stream, read_after, size, max_size)
+        status_code = 206 if (read_after or (max_size != size)) else 200
 
         try:
             filename = mtproto_filename(message)
         except TypeError:
             filename = f"file_{message.media.document.id}"
 
+        logging.info("Incoming streaming request: %s %s %s", request.method, local_token, request.headers)
+
+        if request.method == "HEAD":
+            response = Response(status=status_code)
+            self._write_http_range_headers(response, read_after, size, max_size)
+            self._write_filename_header(response, filename)
+            self._write_access_control_headers(response)
+            return response
+
+        stream = StreamResponse(status=status_code)
+        self._write_http_range_headers(stream, read_after, size, max_size)
         self._write_filename_header(stream, filename)
         self._write_access_control_headers(stream)
 
@@ -313,5 +324,5 @@ class Http:
                 offset = new_offset
 
             await stream.write_eof()
-        except (ConnectionResetError, BrokenPipeError):
-            pass
+        except (ConnectionResetError, BrokenPipeError, ConnectionError):
+            logging.warning("Broken streaming connection: %s %s", local_token, request.headers)
