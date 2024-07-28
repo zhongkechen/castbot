@@ -10,14 +10,16 @@ class DownloadedVideo:
     def __init__(self,
                  video_filename: str,
                  thumbnail_filename: Optional[str] = None,
-                 title: Optional[str] = None,
-                 width: Optional[int] = None,
-                 height: Optional[int] = None):
+                 title: str = "",
+                 width: int = 0,
+                 height: int = 0,
+                 duration: int = 0):
         self.video_filename = video_filename
         self.thumbnail_filename = thumbnail_filename
         self.title = title
         self.width = width
         self.height = height
+        self.duration = duration
 
 
 class Downloader:
@@ -39,10 +41,12 @@ class Downloader:
                     thumbnail_filename = os.path.join(tmpdir, "video1.jpg")
                     info_json = json.load(open(os.path.join(tmpdir, "video1.info.json"), encoding="utf8"))
                     downloaded_video = DownloadedVideo(video_filename,
-                                                       thumbnail_filename,
-                                                       info_json.get("title"),
-                                                       info_json.get("width"),
-                                                       info_json.get("height"))
+                                                       thumbnail_filename=thumbnail_filename,
+                                                       title=info_json.get("title"),
+                                                       width=info_json.get("width"),
+                                                       height=info_json.get("height"),
+                                                       duration=info_json.get("duration")
+                                                       )
                 else:  # "you-get"
                     output_filename = os.path.join(tmpdir, "video1")
                     process = await asyncio.create_subprocess_shell(f"you-get -O {output_filename} '{url}'")

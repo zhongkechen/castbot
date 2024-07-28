@@ -85,10 +85,11 @@ class Bot:
                 video_message = await message.reply_video(
                     reader,
                     quote=True,
-                    caption=downloaded_video.title or "",
-                    width=downloaded_video.width or 0,
-                    height=downloaded_video.height or 0,
+                    caption=downloaded_video.title,
+                    width=downloaded_video.width,
+                    height=downloaded_video.height,
                     thumb=downloaded_video.thumbnail_filename,
+                    duration=downloaded_video.duration,
                     reply_to_message_id=message.id,
                 )
             await reply_message.edit_text("Upload completed.")
