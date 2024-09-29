@@ -45,7 +45,7 @@ class Downloader:
                                                        title=info_json.get("title"),
                                                        width=info_json.get("width"),
                                                        height=info_json.get("height"),
-                                                       duration=info_json.get("duration")
+                                                       duration=int(info_json.get("duration"))
                                                        )
                 else:  # "you-get"
                     output_filename = os.path.join(tmpdir, "video1")
