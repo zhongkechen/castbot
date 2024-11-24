@@ -35,9 +35,12 @@ class Downloader:
                     video_filename = os.path.join(tmpdir, "video1.mp4")
 
                     # download streams with specific video and audio codec. VP9 is not supported on iOS devices.
-                    format = "bv*[vcodec~='avc|hevc|h265|h264']+ba[acodec~='mp4a|aac']/b[ext=mp4][vcodec~='avc|hevc|h265|h264']"
+                    video_format = "/".join([
+                        "bv*[vcodec~='avc|hevc|h265|h264']+ba[ext~='m4a|mp4']",
+                        "b[ext=mp4][vcodec~='avc|hevc|h265|h264']"
+                    ])
                     process = await asyncio.create_subprocess_shell(
-                        f"yt-dlp -v -f \"{format}\" -o {video_filename} "
+                        f"yt-dlp -v -f \"{video_format}\" -o {video_filename} "
                         f"--write-thumbnail --write-info-json --convert-thumbnails jpg '{url}'"
                     )
                     await process.communicate()
