@@ -33,8 +33,11 @@ class Downloader:
             with tempfile.TemporaryDirectory() as tmpdir:
                 if self._downloader == "yt-dlp":
                     video_filename = os.path.join(tmpdir, "video1.mp4")
+
+                    # download streams with specific video and audio codec. VP9 is not supported on iOS devices.
+                    format = "bv*[vcodec~='avc|hevc|h265|h264']+ba[acodec~='mp4a|aac']/b[ext=mp4][vcodec~='avc|hevc|h265|h264']"
                     process = await asyncio.create_subprocess_shell(
-                        f"yt-dlp -v -f 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b' -o {video_filename} "
+                        f"yt-dlp -v -f \"{format}\" -o {video_filename} "
                         f"--write-thumbnail --write-info-json --convert-thumbnails jpg '{url}'"
                     )
                     await process.communicate()
