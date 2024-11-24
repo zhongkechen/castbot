@@ -34,7 +34,7 @@ class Downloader:
                 if self._downloader == "yt-dlp":
                     video_filename = os.path.join(tmpdir, "video1.mp4")
                     process = await asyncio.create_subprocess_shell(
-                        f"yt-dlp -v -f mp4 -o {video_filename} "
+                        f"yt-dlp -v -f 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b' -o {video_filename} "
                         f"--write-thumbnail --write-info-json --convert-thumbnails jpg '{url}'"
                     )
                     await process.communicate()

@@ -12,3 +12,4 @@ build/
 *.egg-info/
 /.mypy_cache/
 .python-version
+.DS_Store
