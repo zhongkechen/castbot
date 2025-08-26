@@ -102,7 +102,7 @@ class DeviceFinderCollection:
     @staticmethod
     async def _refresh_one_finder(finder):
         try:
-            with async_timeout.timeout(finder.request_timeout + 1):
+            async with async_timeout.timeout(finder.request_timeout + 1):
                 return await finder.find()
         except asyncio.CancelledError:
             pass

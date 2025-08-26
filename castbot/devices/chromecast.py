@@ -28,7 +28,7 @@ class ChromecastDevice(Device):
         return self._device.name
 
     async def stop(self):
-        pass
+        await run_method_in_executor(self._device.stop)
 
     async def on_close(self, local_token: LocalToken):
         await run_method_in_executor(self._device.stop)

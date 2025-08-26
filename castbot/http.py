@@ -3,6 +3,7 @@ import logging
 import os.path
 import re
 import typing
+from typing import Any, Coroutine
 from urllib.parse import quote
 
 from aiohttp import web
@@ -219,7 +220,7 @@ class Http:
 
         del _debounce
 
-    async def _stream_handler(self, request: Request) -> typing.Optional[Response]:
+    async def _stream_handler(self, request: Request) -> Response | StreamResponse:
         _message_id: str = request.match_info["message_id"]
 
         if not _message_id.isdigit():
@@ -326,3 +327,4 @@ class Http:
             await stream.write_eof()
         except (ConnectionResetError, BrokenPipeError, ConnectionError):
             logging.warning("Broken streaming connection: %s %s", local_token, request.headers)
+        return stream
