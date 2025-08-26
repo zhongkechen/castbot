@@ -4,6 +4,9 @@ version = "1.5.0"
 description = "A Telegram Bot to stream contents (Telegram videos, Youtube videos and more) to your smart TV"
 authors = ["Zhongke Chen <github@ch3n2k.com>"]
 readme = "README.md"
+packages = [
+    { include = "castbot" },
+]
 
 [tool.poetry.dependencies]
 python = ">=3.11,<4.0"
@@ -51,6 +54,7 @@ max-line-length=120
 
 [tool.pylint."Message Control"]
 disable = [
+    "too-many-positional-arguments",
     "missing-function-docstring",
     "missing-module-docstring",
     "invalid-overridden-method",
