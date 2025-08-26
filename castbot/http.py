@@ -3,7 +3,6 @@ import logging
 import os.path
 import re
 import typing
-from typing import Any, Coroutine
 from urllib.parse import quote
 
 from aiohttp import web
