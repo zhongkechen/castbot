@@ -17,7 +17,7 @@ catt = "^0.13"
 async-upnp-client = "^0.45"
 toml = {version="^0.10", python="<3.11"}
 you-get = "^0.4"
-yt-dlp = "^2025.8"
+yt-dlp = "==2025.9.26"
 pyrogram = "^2.0"
 tgcrypto = "^1.2"
 
