@@ -126,7 +126,7 @@ class Downloader:
                 )
             await reply_message.edit_text("Upload completed.")
             await reply_message.delete()
-            self._playing_videos.on_new_video(None, video_message, link_message=message)
+            await self._playing_videos.on_new_video(None, video_message, link_message=message)
         except Exception as e:
             logging.exception("Failed to download %s", url)
 
