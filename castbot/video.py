@@ -3,6 +3,7 @@ import logging
 import re
 import typing
 
+from pyrogram import Client
 from pyrogram.errors import MessageNotModified
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -28,12 +29,22 @@ class PlayingVideos:
         self._playing_videos: typing.Dict[LocalToken, PlayingVideo] = {}
         self._user_data: typing.Dict[int, UserData] = {}
 
+    async def on_new_video(self, _: Client | None, video_message: Message, link_message=None):
+        user_id = (link_message or video_message).from_user.id
+        local_token = LocalToken(video_message.id)
+
+        video = self.new_video(local_token, user_id, video_message,
+                               link_message=link_message,
+                               control_message=None)
+        await video.send_stopped_control_message()
+
     def remove(self, playing_video: "PlayingVideo"):
         local_token = playing_video.local_token
         if local_token in self._playing_videos:
             del self._playing_videos[local_token]
 
-    def new_video(self, local_token: LocalToken, user_id, video_message, control_message, link_message, device=None):
+    def new_video(self, local_token: LocalToken, user_id, video_message,
+                  link_message=None, control_message=None, device=None):
         device = device or self.get_user_device(user_id)
         self._playing_videos[local_token] = PlayingVideo(
             local_token=local_token,
@@ -41,8 +52,8 @@ class PlayingVideos:
             playing_videos=self,
             playing_device=device,
             video_message=video_message,
-            control_message=control_message,
             link_message=link_message,
+            control_message=control_message,
         )
         return self._playing_videos[local_token]
 
@@ -62,7 +73,10 @@ class PlayingVideos:
         device_name = PlayingVideo.parse_device_str(control_message.text) or self.get_user_device(user_id)
         device = await self._device_finders.find_device_by_name(device_name)
 
-        return self.new_video(local_token, user_id, video_message, control_message, link_message, device=device)
+        return self.new_video(local_token, user_id, video_message,
+                              link_message=link_message,
+                              control_message=control_message,
+                              device=device)
 
     async def handle_closed(self, remains: float, local_token: LocalToken):
         if local_token in self._playing_videos:
@@ -93,15 +107,15 @@ class PlayingVideo:
         playing_videos: PlayingVideos,
         playing_device: typing.Optional[Device] = None,
         video_message: typing.Optional[Message] = None,
-        control_message: typing.Optional[Message] = None,
         link_message: typing.Optional[Message] = None,
+        control_message: typing.Optional[Message] = None,
     ):
         self.local_token = local_token
         self.user_id = user_id
         self.video_message = video_message
         self.playing_device: typing.Optional[Device] = playing_device
-        self.control_message = control_message
         self.link_message = link_message
+        self.control_message = control_message
         self.playing_videos = playing_videos
 
     def _gen_device_str(self):
