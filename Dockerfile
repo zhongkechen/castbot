@@ -1,4 +1,4 @@
-FROM python:3.11
+FROM python:3.13
 
 ENV PYTHONUNBUFFERED=1
 ENV POETRY_VIRTUALENVS_CREATE=0
@@ -8,6 +8,7 @@ ENV POETRY_VIRTUALENVS_CREATE=0
 #RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 RUN apt-get update && apt-get install -y ffmpeg && apt-get clean && rm -rf /var/lib/apt/lists/*
 RUN curl -sSL https://install.python-poetry.org | python -
+RUN curl -fsSL https://deno.land/install.sh | sh
 # RUN python -m pip install --upgrade pip poetry
 
 WORKDIR /app
@@ -22,4 +23,4 @@ RUN /root/.local/bin/poetry install
 
 HEALTHCHECK CMD ["castbot", "--healthcheck"]
 
-CMD ["castbot", "-vv"]
+CMD ["/app/.venv/bin/castbot", "-vv"]
