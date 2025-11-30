@@ -40,16 +40,16 @@ class Downloader:
         self._download_tasks = set()
         self._playing_videos = playing_videos
 
-    def parse_link_message(self, message: Message):
+    @staticmethod
+    def parse_link_message(message: Message):
         if not message:
-            return
+            return None
         text = message.text.strip()
         result = re.search(_URL_PATTERN, text)
         if not result:
-            return
+            return None
         url = result.group()
         return url
-
 
     @contextlib.asynccontextmanager
     async def download(self, url):
@@ -130,6 +130,7 @@ class Downloader:
         except Exception as e:
             logging.exception("Failed to download %s", url)
 
-            from .button import RetryButton
+            from .button import RetryButton  # pylint: disable=C0415
             buttons = [[RetryButton(self).get_button()]]
-            await reply_message.edit_text(f"Exception thrown {e} when downloading {url}", reply_markup=InlineKeyboardMarkup(buttons))
+            await reply_message.edit_text(f"Exception thrown {e} when downloading {url}",
+                                          reply_markup=InlineKeyboardMarkup(buttons))

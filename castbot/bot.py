@@ -38,4 +38,3 @@ class Bot:
         admin_filter_inline = filters.create(lambda _, __, m: m.from_user.id in self._admins)
         self._bot_client.register(CallbackQueryHandler(self._buttons.on_button_click, admin_filter_inline))
         await self._bot_client.start()
-

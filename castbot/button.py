@@ -47,7 +47,7 @@ class Button(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def on_click(self, message: CallbackQuery):
+    async def on_click(self, callback_query: CallbackQuery):
         raise NotImplementedError
 
 
@@ -76,21 +76,23 @@ class VideoControlButton(Button):
         if action not in cls.ACTION_TO_STATUS:
             return None
 
-        playing_video = await context.playing_videos.reconstruct_playing_video(local_token, context.from_user, context.message)
+        playing_video = await context.playing_videos.reconstruct_playing_video(local_token,
+                                                                               context.from_user,
+                                                                               context.message)
         return cls(action, playing_video)
 
-    async def on_click(self, message: CallbackQuery):
+    async def on_click(self, callback_query: CallbackQuery):
         try:
             action = self.text.lower()
             await getattr(self.playing_video, action)()
-            await message.answer(self.ACTION_TO_STATUS[self.text])
+            await callback_query.answer(self.ACTION_TO_STATUS[self.text])
         except NoDeviceException:
-            await message.answer("Device not selected")
+            await callback_query.answer("Device not selected")
         except ActionNotSupportedException:
-            await message.answer("Action not supported by the device")
+            await callback_query.answer("Action not supported by the device")
         except Exception as ex:
             logging.exception("Failed to control the device")
-            await message.answer(f"Internal error: {ex.__class__.__name__}")
+            await callback_query.answer(f"Internal error: {ex.__class__.__name__}")
 
 
 class DeviceMenuButton(Button):
@@ -113,10 +115,12 @@ class DeviceMenuButton(Button):
             return None
         if action not in cls.ACTIONS:
             return None
-        playing_video = await context.playing_videos.reconstruct_playing_video(local_token, context.from_user, context.message)
+        playing_video = await context.playing_videos.reconstruct_playing_video(local_token,
+                                                                               context.from_user,
+                                                                               context.message)
         return cls(action, playing_video, context.finders)
 
-    async def on_click(self, message: CallbackQuery):
+    async def on_click(self, callback_query: CallbackQuery):
         assert self.finders is not None
         if self.text == "REFRESH":
             await self.finders.refresh_all_devices()
@@ -145,17 +149,18 @@ class DeviceSelectButton(Button):
                                                                                context.message)
         return cls(device, playing_video, context.finders)
 
-    async def on_click(self, message: CallbackQuery):
+    async def on_click(self, callback_query: CallbackQuery):
         assert self.finders is not None
         device = await self.finders.find_device_by_name(self.text)
         if not device:
-            return await message.answer("Wrong device")
+            return await callback_query.answer("Wrong device")
 
         await self.playing_video.select_device(device)
 
 
 class RetryDownloadButton(Button):
     PREFIX = "r"
+
     def __init__(self, text: str, downloader=None):
         self.text = text
         self.downloader = downloader
@@ -166,6 +171,7 @@ class RetryDownloadButton(Button):
     @classmethod
     async def from_data(cls, data, context: Context):
         prefix, text = data.split(":")
+        assert prefix == cls.PREFIX
         return cls(text, context.downloader)
 
     async def on_click(self, callback_query: CallbackQuery):
@@ -206,6 +212,7 @@ class Buttons:
             raise UnknownCallbackException
 
         await button.on_click(callback_query)
+
 
 def gen_data(prefix, local_token, payload):
     return f"{prefix}:{local_token}:{payload}"
