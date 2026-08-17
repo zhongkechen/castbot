@@ -14,7 +14,7 @@ from ..device import Device, DeviceFinder
 __all__ = ["Finder"]
 
 _LOGGER = logging.getLogger(__name__)
-ArgType = typing.Union[typing.AnyStr, int, bool]
+ArgType = typing.Union[str, bytes, int, bool]
 
 _JSON_HEADERS = {"content-type": "application/json"}
 _JSONRPC_VERSION = "2.0"
@@ -31,7 +31,7 @@ class XbmcDeviceParams:
     _username: typing.Optional[str] = None
     _password: typing.Optional[str] = None
 
-    def __init__(self, params: typing.Dict[str, typing.AnyStr]):
+    def __init__(self, params: typing.Dict[str, typing.Any]):
         self._host = params["host"]
         self._port = params["port"]
 

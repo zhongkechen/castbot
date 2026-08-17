@@ -1,7 +1,6 @@
 from pyrogram import filters
 from pyrogram.handlers import MessageHandler, CallbackQueryHandler
 
-
 __all__ = ["Bot"]
 
 
