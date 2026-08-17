@@ -324,6 +324,7 @@ class Http:
                 offset = new_offset
 
             await stream.write_eof()
+            stream.force_close()
         except (ConnectionResetError, BrokenPipeError, ConnectionError):
             logging.warning("Broken streaming connection: %s %s", local_token, request.headers)
         return stream

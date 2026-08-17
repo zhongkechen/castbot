@@ -80,7 +80,7 @@ class BotClient:
             location=InputDocumentFileLocation(
                 id=message.media.document.id,
                 access_hash=message.media.document.access_hash,
-                file_reference=b"",
+                file_reference=message.media.document.file_reference,
                 thumb_size="",
             ),
         )
