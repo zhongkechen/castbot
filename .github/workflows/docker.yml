@@ -1,4 +1,4 @@
-name: Docker Image on DockerHub
+name: Docker Image on DockerHub and GHCR
 
 on: [push, release]
 
@@ -6,8 +6,12 @@ jobs:
   build:
     name: Build Docker image (linux/386, linux/amd64, linux/arm/v6, linux/arm/v7, linux/arm64, linux/ppc64le)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     env:
       DH_IMAGE_TAG: ${{ secrets.DOCKERHUB_USERNAME }}/castbot
+      GHCR_IMAGE_TAG: ghcr.io/${{ github.repository }}
 
     steps:
       - name: Checkout current repo
@@ -27,6 +31,7 @@ jobs:
         with:
           images: |
             ${{ env.DH_IMAGE_TAG }}
+            ${{ env.GHCR_IMAGE_TAG }}
           tag-sha: true
 
       - name: Login to DockerHub
@@ -35,6 +40,14 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Login to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
         uses: docker/build-push-action@v2
