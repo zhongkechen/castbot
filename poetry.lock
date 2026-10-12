@@ -1635,14 +1635,14 @@ files = [
 
 [[package]]
 name = "pyroblack"
-version = "2.9.9"
+version = "3.0.3"
 description = "Pyrogram, but black. Elegant, modern and asynchronous Telegram MTProto API framework in Python for users and bots"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "pyroblack-2.9.9-py3-none-any.whl", hash = "sha256:bef07c914eaa7d3289fad14cf90547c020ba84f2e3567cd1f191184142dc3fc9"},
-    {file = "pyroblack-2.9.9.tar.gz", hash = "sha256:65f1c1c4d756b8485d3a2c1dc0d971f008cd2bf1276ed1637b66ab29f94576ba"},
+    {file = "pyroblack-3.0.3-py3-none-any.whl", hash = "sha256:d0f4e1d25e5018ec94cc33672a08b55dff59ad177313314ecd66ee00c2f70753"},
+    {file = "pyroblack-3.0.3.tar.gz", hash = "sha256:2d5c010cfdfde8f1b9fa4b821019f0df96fdc880828f949995a8d20eedc709be"},
 ]
 
 [package.dependencies]
@@ -2151,4 +2151,4 @@ ifaddr = ">=0.1.7"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<4.0"
-content-hash = "facd1731bc44a78690ea7f3f28afc100bdb26c1654b8e5379a42da8714a5ff37"
+content-hash = "21ee4431763f81c13d2ae54f31623275248656a215de88f21d22ee6fe756241d"
