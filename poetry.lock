@@ -1660,14 +1660,14 @@ files = [
 
 [[package]]
 name = "pyroblack"
-version = "3.0.3"
+version = "3.0.5"
 description = "Pyrogram, but black. Elegant, modern and asynchronous Telegram MTProto API framework in Python for users and bots"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "pyroblack-3.0.3-py3-none-any.whl", hash = "sha256:d0f4e1d25e5018ec94cc33672a08b55dff59ad177313314ecd66ee00c2f70753"},
-    {file = "pyroblack-3.0.3.tar.gz", hash = "sha256:2d5c010cfdfde8f1b9fa4b821019f0df96fdc880828f949995a8d20eedc709be"},
+    {file = "pyroblack-3.0.5-py3-none-any.whl", hash = "sha256:217a2024028d827819d0b18aa2457d8f17e526ffb80583f4fece783b87f8dae6"},
+    {file = "pyroblack-3.0.5.tar.gz", hash = "sha256:fa1b88bf88a98b8ad10ae1fb70a094a1b6f1d49634fe60e1f6a4c49c43fc6217"},
 ]
 
 [package.dependencies]
