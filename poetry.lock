@@ -432,14 +432,14 @@ requests = "*"
 
 [[package]]
 name = "catt"
-version = "0.13.2"
+version = "0.13.3"
 description = "Cast All The Things allows you to send videos from many, many online sources to your Chromecast."
 optional = false
 python-versions = ">=3.11"
 groups = ["main"]
 files = [
-    {file = "catt-0.13.2-py3-none-any.whl", hash = "sha256:bf5b8be40441fa064fa0fe3ea149128b0909fbe03bd8c8858987b0363115e00e"},
-    {file = "catt-0.13.2.tar.gz", hash = "sha256:06ec4f2baa8c560326d2a40f1c725aedefc2f02f15af5414359ba7f8fcb311e7"},
+    {file = "catt-0.13.3-py3-none-any.whl", hash = "sha256:536254de313daca0aa15c088dc793cd7e06e60afb8edf6d8cb8ba6ef72281ef3"},
+    {file = "catt-0.13.3.tar.gz", hash = "sha256:012659cddbdb029543dcc7df5d8833f7601d40fd3a8ce53c85f4cd4f1d9b6577"},
 ]
 
 [package.dependencies]
