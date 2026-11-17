@@ -1,24 +1,26 @@
-# [P2] 旧视频超时清理注销仍播放新视频的设备
+# [P2] Stale playback cleanup unregisters the device used by active playback
 
-用户在同一已选设备上先播放 A，再切换到 B。A 的连接结束后，其清理仍会在默认 900 秒宽限期后运行。
+## Problem
 
-预期：A 的清理只处理 A 的播放资源，B 及其设备继续有效。实际：A.close 调用共享设备的 on_close，WebDevice 无条件注销同一浏览器；B 仍在应用与 HTTP 播放映射中，却失去了 Web 设备注册。
+A user plays A and then B on the same selected device. After A's connections end, A's cleanup can still run when its default 900-second grace period expires.
 
-重现文件创建真实 Http、PlayingVideos 和 WebDevice：A、B 默认共享用户设备，B 有活动 transport，播放 URL 已被浏览器领取；直接运行 A 的真实 HTTP 超时回调后，浏览器注销而 B 仍为活动状态。此 case 聚焦跨播放实例的清理归属，与重复 UPnP 订阅任务问题分别记录。
+Expected: A's cleanup releases A's resources while B and its device remain valid. Observed: A.close calls on_close on the shared device, and WebDevice unconditionally unregisters that browser. B remains in the application's playback map and the HTTP token map but loses the Web device registration.
 
-源码：[castbot/http.py:205](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/http.py#L205)、[castbot/video.py:224](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/video.py#L224)、[castbot/devices/web.py:29](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/devices/web.py#L29)、[castbot/devices/chromecast.py:33](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/devices/chromecast.py#L33)、[castbot/devices/upnp.py:233](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/devices/upnp.py#L233)。
+The reproducer uses real Http, PlayingVideos, and WebDevice instances. A and B inherit the same user-selected device; B has a transport reporting active, and its playback URL has already been consumed. Invoking A's real HTTP timeout callback unregisters the browser while B remains active. This case records cleanup ownership separately from the repeated-UPnP-subscription issue.
 
-## 重现
+Sources: [castbot/http.py:205](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/http.py#L205), [castbot/video.py:224](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/video.py#L224), [castbot/devices/web.py:29](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/devices/web.py#L29), [castbot/devices/chromecast.py:33](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/devices/chromecast.py#L33), [castbot/devices/upnp.py:233](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/devices/upnp.py#L233).
 
-在此分支安装项目锁定依赖后，从仓库根目录执行：
+## Reproduction
+
+Install this branch's locked dependencies, then run from the repository root:
 
 ```bash
 poetry install --no-root
 poetry run python -m unittest discover -s tests/repro_cases -p test_09_stale_playback_cleanup.py -v
 ```
 
-新增文件 `tests/repro_cases/test_09_stale_playback_cleanup.py` 独立运行，不依赖其他问题 PR 的 helper。测试断言当前观察到的缺陷，**PASS 表示缺陷已复现**；修复该行为后应更新或替换这些断言。本 PR 仅新增问题说明和重现 case，生产代码及 CI 未修改。
+`tests/repro_cases/test_09_stale_playback_cleanup.py` runs independently without helpers from other issue PRs. It asserts the currently observed defect: **PASS confirms reproduction, not remediation**. Update or replace these assertions when the corresponding behavior changes. This PR adds only the issue description and reproduction case; production code and CI are unchanged.
 
-## 验证边界
+## Validation boundaries
 
-直接模拟到期回调而不等待 900 秒；Telegram 控制消息与 transport 为 mock。自动 case 验证 Web 驱动，不连接真实 Chromecast/UPnP 或浏览器。
+The expired callback is invoked directly rather than waiting 900 seconds. Telegram controller updates and transports are test doubles. The automated case exercises the Web driver without connecting to a browser, Chromecast, or UPnP device.
