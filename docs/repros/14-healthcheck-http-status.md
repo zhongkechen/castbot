@@ -1,27 +1,29 @@
-# [P2] 健康检查把 HTTP 500 当作健康
+# [P2] Health checks report HTTP 500 as healthy
 
-Telegram 会话断线时，真实 `/healthcheck` handler 返回 HTTP 500。CLI 的 `health_check` 仅观察请求是否抛异常，没有检查状态码，仍返回退出码 0。Docker HEALTHCHECK 因此无法区分健康与已断线的 bot。
+## Problem
 
-## 预期与实际
+When the Telegram session is disconnected, the real `/healthcheck` handler returns HTTP 500. The CLI health_check function only observes whether the request raises an exception; it does not check the response status and returns exit code 0. Docker HEALTHCHECK therefore cannot distinguish a healthy bot from this disconnected state.
 
-- 预期：HTTP 500 对应非零检查结果；正常 HTTP 200 对应 0。
-- 实际：真实服务端 handler 的 HTTP 500 和 200，经客户端请求边界 mock 传入 CLI，均得到 0。
+## Expected and observed behavior
 
-源码：[CLI 检查](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/__main__.py#L49)、[服务端状态](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/http.py#L162)。
+- Expected: HTTP 500 produces a nonzero result, while HTTP 200 produces 0.
+- Observed: HTTP 500 and HTTP 200 responses from the real server handler both produce 0 when supplied to the real CLI through a mocked HTTP transport boundary.
 
-## 重现
+Sources: [CLI check](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/__main__.py#L49), [Server response](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/http.py#L162).
 
-从仓库根目录运行：
+## Reproduction
+
+Run from the repository root:
 
 ```bash
 poetry install --no-root
 poetry run python -m unittest discover -s tests/repro_cases -p test_14_healthcheck_http_status.py -v
 ```
 
-case 独立实例化真实 Http，模拟 Telegram 会话检查抛 ConnectionError，取得真实 HTTP 500 Response，再通过假 ClientSession 调用真实 CLI 检查。另有 HTTP 200 正常对照。
+The independent case instantiates the real Http class, simulates a Telegram session check raising ConnectionError, and obtains the real HTTP 500 Response. A fake ClientSession passes that response to the real CLI check. A separate HTTP 200 control is included.
 
-测试断言当前实际缺陷，**通过表示问题已复现**。本 PR 只新增说明与重现 case；问题修复后需要更新或替换这些断言。
+The test asserts the current defect: **PASS confirms reproduction, not remediation**. This PR adds only the description and reproduction case; update or replace these assertions when the behavior changes.
 
-## 验证边界
+## Validation boundaries
 
-Telegram 会话和 HTTP 网络传输为 mock；未连接 Telegram、启动真实 HTTP 服务或 Docker 容器。自动 case 共 2 项，不依赖其他重现 PR。
+Telegram session state and HTTP transport are mocked. The case does not connect to Telegram or start an HTTP service or Docker container. There are two automated cases, with no dependency on other reproduction PRs.
