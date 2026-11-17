@@ -1,40 +1,40 @@
-## 问题
+## Problem
 
-README 的 pip 示例使用 -v 1，但实际 -v 是 count 标志，不接收数值参数。README 还写 Python 3.8+，项目声明最低 Python 3.11。
+The README pip example uses `-v 1`, but the actual `-v` option is a count flag and does not accept a numeric argument. The README also states Python 3.8+, while the project declares a minimum of Python 3.11.
 
-本 PR 添加一份问题记录和可独立执行的离线重现 case，审查优先级 **P3**。
+This PR adds a problem record and an independently runnable offline reproduction case. Review priority: **P3**.
 
-## 触发条件
+## Trigger
 
-按 README 的 pip 命令启动；或者按文档声称的最低 Python 版本准备环境。运行命令 case 需要可写 TMPDIR。
+Start the application with the README pip command, or prepare an environment according to the documented minimum Python version. The command case requires a writable `TMPDIR`.
 
-## 预期与实际
+## Expected and observed
 
-- 预期：文档中的运行命令能够被 CLI 解析，最低版本说明应与包的 Python requirement 一致。
-- 实际：从 README 提取的命令交给真实 entry_point 后退出码为 2，报 unrecognized arguments: 1，未启动业务；版本 case 得到文档 3.8 小于项目 3.11。
+- Expected: the documented command is accepted by the CLI, and the minimum version agrees with the package's Python requirement.
+- Observed: the command extracted from the README exits with code 2 when passed to the real `entry_point`, reporting `unrecognized arguments: 1` before startup. The version case finds that the documented 3.8 is below the project's 3.11 requirement.
 
-## 源码位置
+## Source locations
 
 - [README.md:32](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/README.md#L32)
 - [README.md:35](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/README.md#L35)
 - [castbot/__main__.py:65](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/__main__.py#L65)
 - [pyproject.toml:12](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/pyproject.toml#L12)
 
-## 重现
+## Reproduce
 
-在仓库根目录、安装项目锁定依赖的环境中运行：
+From the repository root, in an environment with the project's locked dependencies installed:
 
 ```bash
 poetry run python -m unittest discover -s tests/repro_cases -p test_20_readme_cli_mismatch.py -v
 ```
 
-直接读取仓库 README 的命令，用 TMPDIR 中最小有效 TOML 替换配置路径；调用真实 entry_point 并捕获解析错误，额外用安全 startup stub 防止意外启动 bot。另从 README 与 pyproject.toml 读取并比较最低版本。
+The case reads the actual README command and replaces only its config path with a minimal valid TOML file under `TMPDIR`. It invokes the real `entry_point`, captures the parsing error, and uses a safe startup stub to prevent accidental bot startup. A separate case reads and compares the minimum versions in README and pyproject.toml.
 
-**测试通过表示当前缺陷已被复现，不代表问题已修复。** case 断言当前实际错误行为；问题修复后需要更新或替换这些断言。
+**A passing test confirms that the current defect was reproduced; it does not indicate a fix.** The cases assert the observed faulty behavior. Those assertions will need to be updated or replaced when the behavior changes.
 
-## 验证与限制
+## Validation and limits
 
-本地 Python 3.14 离线运行：**2 项测试通过**。
+Local offline execution with Python 3.14: **2 tests passed**.
 
-- 没有在 Python 3.8 中执行安装；最低版本差异来自实际 README 与包声明。
-- 不创建 Telegram session 或启动 bot，临时配置只含虚构 reproduction 字段。
+- Installation is not attempted with Python 3.8. The version discrepancy is established from the actual README and package requirement.
+- No Telegram session or bot is started. The temporary configuration contains only dummy reproduction fields.
