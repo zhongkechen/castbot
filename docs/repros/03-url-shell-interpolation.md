@@ -1,22 +1,24 @@
-## 问题
+# [P1] Download URLs are interpolated into shell commands
 
-URL 正则允许 `&`，下载器把提取到的 URL 原样拼入 `create_subprocess_shell` 的命令字符串。`yt-dlp` 与 `you-get` 都存在这个边界：`&` 被 shell 当作控制操作符，而不是 URL 查询参数的一部分。
+## Problem and prerequisites
 
-本 PR 添加问题说明和可独立运行的离线重现 case，审查优先级 **P1**。该 case 不执行 shell 或攻击命令。
+The URL regex accepts `&`, and the downloader inserts the extracted URL verbatim into a command string passed to `create_subprocess_shell`. Both `yt-dlp` and `you-get` cross this boundary: the shell treats `&` as a control operator rather than part of a URL query parameter.
 
-## 触发条件
+This PR adds a problem description and an independently runnable offline reproduction case, with review priority **P1**. The case does not execute a shell or attack command.
 
-Telegram 文本入口只允许配置中的 bot admins。需要管理员提交包含 `&` 的链接，或被诱导提交这样的链接；媒体控制权限本身不等于宿主 OS 命令执行权限。
+## Preconditions
 
-已知应用入口的正则限制了可用 payload 字符。这里验证的是额外无参数命令和合法查询参数被拆开的路径，没有宣称任意形式的 shell 参数都能直接提交。需要将 TMPDIR 指向可写目录，以保存本地输出占位文件。
+The Telegram text entry point accepts only configured bot admins. An admin must submit a link containing `&`, or be induced to submit one. Permission to control media does not itself grant permission to execute host OS commands.
 
-## 预期与实际
+The regex at the application entry point restricts available payload characters. This case covers an additional argumentless command and splitting of a legitimate query string; it does not claim that arbitrary shell arguments can be submitted directly. TMPDIR must point to a writable directory for local output placeholder files.
 
-- 预期：提取出的完整 URL 作为下载器的一个参数，`&` 保留在 URL 中。
-- 实际：`https://media.invalid/video.mp4&id` 的捕获命令被 shell 词法解析为 URL、独立 `&` 操作符和 `id`；正常 `https://media.invalid/watch?v=dummy&list=dummy` 同样被拆为两个 shell 片段。
-- 两个下载后端均观察到同样结果。实际执行时前者可以调用额外的无参数命令，后者会丢失 URL 后半段，并可能使下载命令后台运行。
+## Expected and observed behavior
 
-## 源码位置
+- Expected: the entire extracted URL is one downloader argument, preserving `&` within the URL.
+- Observed: lexical analysis of the captured command for `https://media.invalid/video.mp4&id` produces the URL, a separate `&` operator, and `id`. The legitimate URL `https://media.invalid/watch?v=dummy&list=dummy` also splits into two shell segments.
+- Both downloader backends produce the same result. If executed, the first form can invoke an additional argumentless command; the second loses the remainder of the URL and may run the download in the background.
+
+## Source locations
 
 - [downloader.py:14](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/downloader.py#L14)
 - [downloader.py:66](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/downloader.py#L66)
@@ -24,20 +26,20 @@ Telegram 文本入口只允许配置中的 bot admins。需要管理员提交包
 - [bot.py:28](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/bot.py#L28)
 - [bot.py:35](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/bot.py#L35)
 
-## 重现
+## Reproduction
 
-在仓库根目录、安装项目锁定依赖后执行：
+Run from the repository root after installing the project's locked dependencies:
+
+The case first invokes the real `Downloader.parse_link_message`, then the real `Downloader.download`. It replaces only the subprocess boundary and creates actual placeholder video, metadata, and thumbnail files to complete the download context. It then uses `shlex.shlex` with shell-operator recognition on the complete captured command, confirming that `&` is a separate operator and the URL is no longer one argument. Two tests cover an extra-command suffix and an ordinary query string; each covers both backends.
 
 ```bash
 poetry run python -m unittest discover -s tests/repro_cases -p test_03_url_shell_interpolation.py -v
 ```
 
-case 先运行真实 `Downloader.parse_link_message`，再运行真实 `Downloader.download`。仅替换 subprocess 边界，创建实际的视频、元数据和缩略图占位文件以完成下载上下文；随后对捕获到的完整命令字符串使用带 shell 操作符识别的 `shlex.shlex`，确认 `&` 是独立操作符、整个 URL 已不再是单个参数。两个测试分别覆盖恶意尾段和正常查询参数，每个测试覆盖两个后端。
+The reproduction file runs independently and does not depend on helpers from other issue PRs. **PASS confirms that the current defect or static configuration conflict has been observed; it does not mean the issue is fixed.** The assertions record the observed behavior and should be updated or replaced after that behavior changes. This PR contains only the problem description and reproduction case; application code and CI are unchanged.
 
-**PASS 表示当前缺陷已复现，不代表已修复。** case 断言当前观察到的错误行为；问题修复后需要更新或替换这些断言。
+## Validation limits
 
-## 验证边界
-
-- 不执行任何 shell、yt-dlp、you-get 或 `id`，没有 OS payload 执行或真实下载。
-- 不连接 Telegram、播放设备或外部 URL，所有 URL 和输出数据均为虚构。
-- 自动 case 验证 source-to-shell 命令构造与词法边界，没有测量后台下载竞争或实际系统命令影响。
+- No shell, yt-dlp, you-get, or `id` is executed. There is no OS payload execution or real download.
+- No Telegram service, playback device, or external URL is contacted. All URLs and output data are synthetic.
+- The automated case validates source-to-shell command construction and lexical boundaries. It does not measure a background-download race or actual system-command impact.
