@@ -1,24 +1,32 @@
-# [P2] 日志记录设备密码与可还原媒体令牌
+# [P2] Logs expose device passwords and reversible media tokens
 
-DeviceFinder 的 INFO 日志输出完整设备配置，包括设备 password；流 handler 在 INFO 日志输出可逆 LocalToken 和全部 HTTP 请求 headers。LocalToken 的十六进制字符串包含 message_id 和访问 token，可以反序列化恢复。
+## Problem and prerequisites
 
-触发前提是开启相关日志（镜像 `-vv` 启用 INFO），日志读取者没有对应设备或媒体权限。预期：诊断日志不向这类读取者暴露密码或媒体访问能力。实际：设备密码、访问令牌和敏感请求 header 被原样记录。
+DeviceFinder logs the complete device configuration at INFO, including the device password. The stream handler logs the reversible LocalToken and all HTTP request headers at INFO. LocalToken's hexadecimal string includes both `message_id` and the access token, which can be recovered through deserialization.
 
-case 先捕获真实 WebDeviceFinder 初始化日志中的虚构密码，再调用已授权的真实 Http GET handler，从捕获日志中解析和恢复完整虚构媒体令牌，同时确认虚构 Authorization header 被记录。
+The prerequisites are that the relevant logging is enabled (the image's `-vv` enables INFO) and a log reader lacks permission to access the corresponding device or media. Expected: diagnostic logs do not expose passwords or media access capabilities to that reader. Observed: device passwords, access tokens, and sensitive request headers are recorded verbatim.
 
-源码：[castbot/device.py:62](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/device.py#L62)、[castbot/http.py:285](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/http.py#L285)、[castbot/http.py:329](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/http.py#L329)、[castbot/utils.py:25](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/utils.py#L25)、[Dockerfile:26](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/Dockerfile#L26)。
+The case captures a dummy password from real WebDeviceFinder initialization logging, invokes an authorized real Http GET handler, and parses the captured log to recover the complete dummy media token. It also confirms that a dummy Authorization header is logged.
 
-## 重现
+## Source locations
 
-在仓库根目录安装锁定依赖后运行：
+- [castbot/device.py:62](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/device.py#L62)
+- [castbot/http.py:285](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/http.py#L285)
+- [castbot/http.py:329](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/http.py#L329)
+- [castbot/utils.py:25](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/utils.py#L25)
+- [Dockerfile:26](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/Dockerfile#L26)
+
+## Reproduction
+
+Run from the repository root after installing the locked dependencies:
 
 ```bash
 poetry install --no-root
 poetry run python -m unittest discover -s tests/repro_cases -p test_05_sensitive_log_data.py -v
 ```
 
-新增重现文件独立运行，不依赖其他 PR helper。**PASS 表示当前缺陷或静态配置矛盾已被观察到，不代表问题修复**；对应行为变化后应更新或替换断言。本 PR 只包含说明与重现文件。
+The reproduction file runs independently and does not depend on helpers from other issue PRs. **PASS confirms that the current defect or static configuration conflict has been observed; it does not mean the issue is fixed.** The assertions record the observed behavior and should be updated or replaced after that behavior changes. This PR contains only the problem description and reproduction case; application code and CI are unchanged.
 
-## 验证边界
+## Validation limits
 
-所有密码、令牌、文档引用和 HTTP headers 为虚构值。消息 RPC、stream 写入及 transport 用 mock，不访问网络或真实日志。验证直接输出机制，未验证某部署的日志访问权限；安全严重程度取决于该权限边界。
+All passwords, tokens, document references, and HTTP headers are synthetic. Message RPC, stream writes, and transport are mocked; no network or real deployment logs are accessed. The case validates the direct logging mechanism, not the log-access permissions of a particular deployment. Security severity depends on that permission boundary.
