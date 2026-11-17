@@ -1,24 +1,31 @@
-# [P2] 设备显示名称导致选择解析和标识冲突
+# [P2] Device display names break callback parsing and identity
 
-配置名称含冒号、逗号、较长中文字符的设备，或两个显示名称相同的设备。
+## Problem
 
-预期：每个设备都能生成有效按钮、准确选择并在恢复控制时保持身份。实际：`TV:Living Room` 的 callback 被误认作旧协议并抛 ValueError；八个“电视机”形成 93 字节 callback，超过 Telegram 的 64 字节限制；同名设备的 callback 完全相同，查找总是返回第一个；`TV, Living Room` 恢复为 `TV`。
+A device name can contain a colon, a comma, a long CJK label, or match another device's display name. The application uses that display name in callback payloads and device lookup.
 
-重现文件直接调用真实 DeviceSelectButton.get_data()、callback 解析、设备查找和控制文本解析。
+Expected: each device can be selected accurately and retain its identity when a controller is restored. Observed:
 
-源码：[castbot/button.py:139](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/button.py#L139)、[castbot/button.py:221](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/button.py#L221)、[castbot/device.py:118](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/device.py#L118)、[castbot/video.py:129](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/video.py#L129)。
+- `TV:Living Room` is interpreted as the old callback format and raises ValueError.
+- Eight repeats of the three-character CJK label `\u7535\u89c6\u673a` produce a 93-byte payload, exceeding Telegram's 64-byte callback_data limit.
+- Two devices with the same display name produce identical intended payloads; lookup always returns the first device.
+- `TV, Living Room` is restored as `TV` because the controller text parser stops at the comma.
 
-## 重现
+The reproducer calls the real DeviceSelectButton.get_data(), callback parser, device lookup, and controller text parser.
 
-在此分支安装项目锁定依赖后，从仓库根目录执行：
+Sources: [castbot/button.py:139](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/button.py#L139), [castbot/button.py:221](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/button.py#L221), [castbot/device.py:118](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/device.py#L118), [castbot/video.py:129](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/video.py#L129).
+
+## Reproduction
+
+Install this branch's locked dependencies, then run from the repository root:
 
 ```bash
 poetry install --no-root
 poetry run python -m unittest discover -s tests/repro_cases -p test_08_device_name_identifiers.py -v
 ```
 
-新增文件 `tests/repro_cases/test_08_device_name_identifiers.py` 独立运行，不依赖其他问题 PR 的 helper。测试断言当前观察到的缺陷，**PASS 表示缺陷已复现**；修复该行为后应更新或替换这些断言。本 PR 仅新增问题说明和重现 case，生产代码及 CI 未修改。
+`tests/repro_cases/test_08_device_name_identifiers.py` runs independently without helpers from other issue PRs. It asserts the currently observed defects: **PASS confirms reproduction, not remediation**. Update or replace these assertions when the corresponding behavior changes. This PR adds only the issue description and reproduction case; production code and CI are unchanged.
 
-## 验证边界
+## Validation boundaries
 
-当前依赖版本另有 get_button 的位置参数构造故障；此 case 直接验证 intended callback payload，未声称完整菜单发送会先触发本编码问题。未实际向 Telegram 提交过长 callback；自动 case 验证真实生成字节数与既有 64 字节协议限制，同名与恢复解析均离线执行。
+The current dependency version also has an independent positional-argument defect in get_button. This case directly inspects the intended callback payload and does not claim that an actual menu send first fails because of name encoding. No oversized callback was submitted to Telegram; the test checks the generated UTF-8 byte count against the existing 64-byte protocol limit. Name lookup and restoration parsing run offline.
