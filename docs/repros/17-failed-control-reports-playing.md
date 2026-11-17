@@ -1,41 +1,41 @@
-## 问题
+## Problem
 
-Kodi 的 HTTP 401 被转换为正常返回值，VLC 认证拒绝也正常关闭连接后返回。在把 Telegram 消息发送设为成功 mock 后，真实 PLAY 控制逻辑仍调用 Playing 消息更新和成功回答。
+Kodi HTTP 401 responses are converted into normal return values. VLC authentication rejection also closes the connection and returns normally. With Telegram message operations mocked as successful, the real PLAY control logic still requests a Playing message update and a success answer.
 
-本 PR 添加一份问题记录和可独立执行的离线重现 case，审查优先级 **P2**。
+This PR adds a problem record and an independently runnable offline reproduction case. Review priority: **P2**.
 
-## 触发条件
+## Trigger
 
-Kodi RPC 的所有请求返回 401，或 VLC telnet 在密码提交后拒绝认证。
+All Kodi RPC requests return 401, or VLC telnet rejects authentication after the password is submitted.
 
-## 预期与实际
+## Expected and observed
 
-- 预期：控制失败应使用户收到失败结果，不能更新为已播放状态。
-- 实际：Kodi 四次 RPC 全部 401，VLC 三次连接全部认证拒绝；两个 case 仍以 Playing 开头的文本调用消息更新 mock，callback.answer mock 仍收到 Playing。
+- Expected: failed device control produces a failure result rather than selecting a playing status.
+- Observed: all four Kodi RPCs return 401, and all three VLC connections reject authentication. Both cases still call the message-update mock with text beginning with Playing, and the `callback.answer` mock receives Playing.
 
-## 源码位置
+## Source locations
 
 - [castbot/devices/xbmc.py:88](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/devices/xbmc.py#L88)
 - [castbot/devices/xbmc.py:121](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/devices/xbmc.py#L121)
 - [castbot/devices/vlc.py:63](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/devices/vlc.py#L63)
 - [castbot/video.py:194](https://github.com/zhongkechen/castbot/blob/dfba532498d7630a3bb15b0546dc5847f5482ee9/castbot/video.py#L194)
 
-## 重现
+## Reproduce
 
-在仓库根目录、安装项目锁定依赖的环境中运行：
+From the repository root, in an environment with the project's locked dependencies installed:
 
 ```bash
 poetry run python -m unittest discover -s tests/repro_cases -p test_17_failed_control_reports_playing.py -v
 ```
 
-实例化真实驱动、PlayingVideo、VideoControlButton；把设备网络边界替换为 401 HTTP session 或认证拒绝的 telnet reader/writer，并把 Telegram 消息更新、callback 回答设为成功 mock。执行真实 on_click → play → driver 链，检查驱动失败是否传播以及调用方选择的状态。
+The cases instantiate real drivers, PlayingVideo and VideoControlButton. Device network operations are replaced with a 401 HTTP session or an authentication-rejecting telnet reader/writer. Telegram message updates and callback answers are mocked as successful. The real `on_click → play → driver` chain runs, allowing the cases to inspect whether driver errors propagate and which status the caller selects.
 
-**测试通过表示当前缺陷已被复现，不代表问题已修复。** case 断言当前实际错误行为；问题修复后需要更新或替换这些断言。
+**A passing test confirms that the current defect was reproduced; it does not indicate a fix.** The cases assert the observed faulty behavior. Those assertions will need to be updated or replaced when the behavior changes.
 
-## 验证与限制
+## Validation and limits
 
-本地 Python 3.14 离线运行：**2 项测试通过**。
+Local offline execution with Python 3.14: **2 tests passed**.
 
-- 没有运行真实 Kodi/VLC，也没有使用真实设备密码。
-- case 针对 HTTP 401 和完整认证拒绝；未测试 TCP 分段，此问题与分段认证 case 独立。
-- 没有执行 Telegram 消息序列化或发送。当前还存在独立的按钮构造故障（第 21 项），实际消息发送会先被它阻断；本 case 隔离发送边界，单独重现驱动错误未向调用方传播的问题。
+- No real Kodi/VLC instance or device password is used.
+- The cases cover HTTP 401 and complete authentication rejection. TCP fragmentation is not tested here and has a separate reproduction case.
+- No Telegram message serialization or transmission occurs. The separate button-construction defect, finding 21, currently blocks real message transmission first. These cases isolate the message boundary to reproduce the independent failure to propagate driver errors; they do not claim that a real Telegram user received Playing.
