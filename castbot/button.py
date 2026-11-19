@@ -35,7 +35,7 @@ class Button(abc.ABC):
         return data.startswith(cls.PREFIX + ":")
 
     def get_button(self):
-        return InlineKeyboardButton(self.text, self.get_data())
+        return InlineKeyboardButton(self.text, callback_data=self.get_data())
 
     @abc.abstractmethod
     def get_data(self):
