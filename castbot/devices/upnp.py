@@ -227,6 +227,9 @@ class UpnpDevice(Device):
     def get_device_name(self) -> str:
         return self._device.friendly_name
 
+    def get_device_key(self) -> str:
+        return self._device.udn
+
     async def stop(self):
         await _upnp_safe_stop(self._service)
 

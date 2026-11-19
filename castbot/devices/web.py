@@ -43,6 +43,9 @@ class WebDevice(Device):
     def get_device_name(self) -> str:
         return self._device_name
 
+    def get_device_key(self) -> str:
+        return str(self._remote_token)
+
     def get_url_to_play(self) -> typing.Optional[str]:
         tmp = self._url_to_play
         self._url_to_play = None

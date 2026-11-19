@@ -27,6 +27,9 @@ class ChromecastDevice(Device):
     def get_device_name(self) -> str:
         return self._device.name
 
+    def get_device_key(self) -> str:
+        return str(self._device.uuid or self._device.ip_addr)
+
     async def stop(self):
         await run_method_in_executor(self._device.stop)
 

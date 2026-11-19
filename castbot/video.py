@@ -60,7 +60,8 @@ class PlayingVideos:
     def add_to_http(self, playing_video):
         return self._http.add_remote_token(playing_video)
 
-    async def reconstruct_playing_video(self, local_token: LocalToken, user_id, control_message):
+    async def reconstruct_playing_video(self, local_token: LocalToken, user_id, control_message,
+                                        *, device_id=None):
         if local_token in self._playing_videos:
             return self._playing_videos[local_token]
         # re-construct PlayVideo when the bot is restarted
@@ -70,13 +71,17 @@ class PlayingVideos:
         else:
             link_message = None
 
-        device_name = PlayingVideo.parse_device_str(control_message.text) or self.get_user_device(user_id)
-        device = await self._device_finders.find_device_by_name(device_name)
+        if device_id:
+            device = await self._device_finders.find_device_by_id(device_id)
+        else:
+            device_name = PlayingVideo.parse_device_str(control_message.text)
+            device = await self._device_finders.find_device_by_name(device_name) if device_name else None
+            device = device or self.get_user_device(user_id)
 
-        return self.new_video(local_token, user_id, video_message,
-                              link_message=link_message,
-                              control_message=control_message,
-                              device=device)
+        video = self.new_video(local_token, user_id, video_message,
+                               link_message=link_message, control_message=control_message)
+        video.playing_device = device
+        return video
 
     async def handle_closed(self, remains: float, local_token: LocalToken):
         if local_token in self._playing_videos:
@@ -126,10 +131,12 @@ class PlayingVideo:
 
     @classmethod
     def parse_device_str(cls, text):
-        groups = re.search("on device ([^,]*)", text)
-        if not groups:
+        _, separator, name = (text or "").partition(" on device ")
+        if not separator:
             return None
-        return groups.group(1)
+        if text.startswith("Streaming closed "):
+            name = re.sub(r", [0-9]+\.[0-9]{2}% remains$", "", name)
+        return name
 
     def _gen_message_str(self):
         return f"for file <code>{self.video_message.id}</code>"
@@ -165,7 +172,10 @@ class PlayingVideo:
         await self.create_or_update_control_message(text, buttons)
 
     async def send_select_device_message(self, devices):
-        device_buttons = [[DeviceSelectButton(repr(d), self).get_button()] for d in devices]
+        device_buttons = [
+            [DeviceSelectButton(device.get_device_name(), self, device_id=device.get_device_id()).get_button()]
+            for device in devices
+        ]
         refresh_button = [[RefreshButton(self).get_button()]]
         await self.create_or_update_control_message("Select a device", device_buttons + refresh_button)
 
