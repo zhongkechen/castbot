@@ -22,14 +22,22 @@ class WebDevice(Device):
         self._remote_token = token
         self._devices = devices
         self._manipulation_timestamp = time.time()
+        self._stop_pending = False
 
     async def stop(self):
         self._url_to_play = None
+        self._stop_pending = True
+
+    def consume_stop(self) -> bool:
+        pending = self._stop_pending
+        self._stop_pending = False
+        return pending
 
     async def on_close(self, local_token: LocalToken):
         self._devices.pop(self._remote_token, None)
 
     async def play(self, url: str, title: str, local_token: LocalToken):
+        self._stop_pending = False
         self._url_to_play = url
 
     def manipulate_timestamp(self) -> float:
@@ -97,12 +105,16 @@ class WebDeviceApiRequestPoll(RequestHandler):
             return Response(status=404)
 
         device.manipulate_timestamp()
+        headers = {"Cache-Control": "no-store"}
+        if device.consume_stop():
+            return Response(status=204, headers=headers)
+
         url_to_play = device.get_url_to_play()
 
         if url_to_play is None:
-            return Response(status=302)
+            return Response(status=302, headers=headers)
 
-        return Response(status=200, body=url_to_play)
+        return Response(status=200, text=url_to_play, headers=headers)
 
 
 class WebDeviceFinder(DeviceFinder):
