@@ -15,7 +15,7 @@ from .utils import LocalToken
 
 __all__ = ["Http"]
 
-_RANGE_REGEX = re.compile(r"bytes=([0-9]+)-([0-9]+)?")
+_RANGE_REGEX = re.compile(r"bytes=([0-9]*)-([0-9]*)", re.IGNORECASE)
 
 
 def mtproto_filename(message: Message) -> str:
@@ -65,29 +65,12 @@ class AsyncDebounce:
         return self._run()
 
 
-def parse_http_range(http_range: str, block_size: int) -> typing.Tuple[int, int, typing.Optional[int]]:
-    matches = _RANGE_REGEX.search(http_range)
-
-    if matches is None:
-        raise ValueError()
-
-    offset = matches.group(1)
-
-    if not offset.isdigit():
-        raise ValueError()
-
-    max_size = matches.group(2)
-
-    if max_size and max_size.isdigit():
-        max_size = int(max_size)
-    else:
-        max_size = None
-
-    offset = int(offset)
-    safe_offset = (offset // block_size) * block_size
-    data_to_skip = offset - safe_offset
-
-    return safe_offset, data_to_skip, max_size
+def parse_http_range(http_range: str) -> tuple[int | None, int | None]:
+    matches = _RANGE_REGEX.fullmatch(http_range.strip())
+    if matches is None or not any(matches.groups()):
+        raise ValueError("Invalid byte range")
+    first, last = matches.groups()
+    return int(first) if first else None, int(last) if last else None
 
 
 class Http:
@@ -138,10 +121,13 @@ class Http:
         return local_token in self._tokens
 
     @staticmethod
-    def _write_http_range_headers(result: StreamResponse, read_after: int, size: int, max_size: int):
-        result.headers.setdefault("Content-Range", f"bytes {read_after}-{max_size}/{size}")
-        result.headers.setdefault("Accept-Ranges", "bytes")
-        result.headers.setdefault("Content-Length", str(size))
+    def _write_http_range_headers(
+        result: StreamResponse, start: int, stop: int, size: int, partial: bool
+    ):
+        if partial:
+            result.headers["Content-Range"] = f"bytes {start}-{stop - 1}/{size}"
+        result.headers["Accept-Ranges"] = "bytes"
+        result.headers["Content-Length"] = str(stop - start)
 
     @staticmethod
     def _write_access_control_headers(result: StreamResponse):
@@ -237,21 +223,6 @@ class Http:
         if not self._check_local_token(local_token):
             return Response(status=403)
 
-        range_header = request.headers.get("Range")
-
-        if range_header is None:
-            offset = 0
-            data_to_skip = 0
-            max_size = None
-        else:
-            try:
-                offset, data_to_skip, max_size = parse_http_range(range_header, self._block_size)
-            except ValueError:
-                return Response(status=400)
-
-        if data_to_skip > self._block_size:
-            return Response(status=500)
-
         try:
             message = await self._bot_client.get_message(local_token.message_id)
         except ValueError:
@@ -264,18 +235,26 @@ class Http:
             return Response(status=404)
 
         size = message.media.document.size
-        read_after = offset + data_to_skip
+        start, stop = 0, size
+        range_header = request.headers.get("Range") if request.method == "GET" else None
+        if range_header is not None:
+            try:
+                first, last = parse_http_range(range_header)
+            except ValueError:
+                return Response(status=400)
+            if first is None:
+                assert last is not None  # The parser requires at least one bound.
+                start = max(size - last, 0)
+            else:
+                start = first
+                if last is not None:
+                    stop = min(last + 1, size)
+            if start >= stop:
+                return Response(status=416, headers={"Content-Range": f"bytes */{size}"})
 
-        if read_after > size:
-            return Response(status=400)
-
-        if (max_size is not None) and (size < max_size):
-            return Response(status=400)
-
-        if max_size is None:
-            max_size = size
-
-        status_code = 206 if (read_after or (max_size != size)) else 200
+        partial = range_header is not None
+        status_code = 206 if partial else 200
+        offset = (start // self._block_size) * self._block_size
 
         try:
             filename = mtproto_filename(message)
@@ -286,30 +265,28 @@ class Http:
 
         if request.method == "HEAD":
             response = Response(status=status_code)
-            self._write_http_range_headers(response, read_after, size, max_size)
+            self._write_http_range_headers(response, start, stop, size, partial)
             self._write_filename_header(response, filename)
             self._write_access_control_headers(response)
             return response
 
         stream = StreamResponse(status=status_code)
-        self._write_http_range_headers(stream, read_after, size, max_size)
+        self._write_http_range_headers(stream, start, stop, size, partial)
         self._write_filename_header(stream, filename)
         self._write_access_control_headers(stream)
 
+        # Advertise the close before sending headers so the client opens a new connection for its next range.
+        stream.force_close()
         await stream.prepare(request)
 
         try:
-            while offset < max_size:
+            while offset < stop:
                 self._feed_timeout(local_token, size)
                 block = await self._bot_client.get_block(message, offset, self._block_size)
+                if not block:
+                    break
                 new_offset = offset + len(block)
-
-                if data_to_skip:
-                    block = block[data_to_skip:]
-                    data_to_skip = False
-
-                if new_offset > max_size:
-                    block = block[: -(new_offset - max_size)]
+                block = block[max(start - offset, 0):stop - offset]
 
                 if request.transport is None:
                     break
@@ -324,7 +301,6 @@ class Http:
                 offset = new_offset
 
             await stream.write_eof()
-            stream.force_close()
         except (ConnectionResetError, BrokenPipeError, ConnectionError):
             logging.warning("Broken streaming connection: %s %s", local_token, request.headers)
         return stream
