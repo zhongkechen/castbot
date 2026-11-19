@@ -7,7 +7,8 @@ from pyrogram import Client
 from pyrogram.types import InlineKeyboardButton, CallbackQuery
 
 from .downloader import Downloader
-from .utils import LocalToken, NoDeviceException, ActionNotSupportedException, UnknownCallbackException
+from .utils import ActionNotSupportedException, DeviceControlError, LocalToken, NoDeviceException
+from .utils import UnknownCallbackException
 
 
 class Context:
@@ -90,6 +91,8 @@ class VideoControlButton(Button):
             await callback_query.answer("Device not selected")
         except ActionNotSupportedException:
             await callback_query.answer("Action not supported by the device")
+        except DeviceControlError as error:
+            await callback_query.answer(f"Device command failed: {error}")
         except Exception as ex:
             logging.exception("Failed to control the device")
             await callback_query.answer(f"Internal error: {ex.__class__.__name__}")
