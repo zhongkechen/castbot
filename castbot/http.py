@@ -275,6 +275,8 @@ class Http:
         self._write_filename_header(stream, filename)
         self._write_access_control_headers(stream)
 
+        # Advertise the close before sending headers so the client opens a new connection for its next range.
+        stream.force_close()
         await stream.prepare(request)
 
         try:
@@ -299,7 +301,6 @@ class Http:
                 offset = new_offset
 
             await stream.write_eof()
-            stream.force_close()
         except (ConnectionResetError, BrokenPipeError, ConnectionError):
             logging.warning("Broken streaming connection: %s %s", local_token, request.headers)
         return stream

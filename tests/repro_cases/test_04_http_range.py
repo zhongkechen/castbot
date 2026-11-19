@@ -12,8 +12,11 @@ class CaptureStream:
         self.status = status
         self.headers = {}
         self.body = b""
+        self.closing = False
 
     async def prepare(self, request):
+        if self.closing:
+            self.headers["Connection"] = "close"
         return self
 
     async def write(self, block):
@@ -23,7 +26,7 @@ class CaptureStream:
         pass
 
     def force_close(self):
-        pass
+        self.closing = True
 
 
 class FakeClient:
@@ -76,6 +79,7 @@ class HttpRangeTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(response.body, body)
                 self.assertEqual(response.headers["Content-Range"], content_range)
                 self.assertEqual(response.headers["Content-Length"], str(len(body)))
+                self.assertEqual(response.headers["Connection"], "close")
 
     async def test_unsatisfiable_ranges_include_the_full_size(self):
         for header in ("bytes=8-", "bytes=4-2", "bytes=-0"):
