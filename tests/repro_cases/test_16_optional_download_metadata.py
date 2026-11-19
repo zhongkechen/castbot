@@ -1,4 +1,4 @@
-"""A passing case confirms the current optional-metadata defects; it is not a fix."""
+"""Check that optional yt-dlp outputs do not prevent processing."""
 
 import json
 import os
@@ -18,7 +18,7 @@ class CompletedProcess:
         return None, None
 
 
-class OptionalMetadataReproduction(unittest.IsolatedAsyncioTestCase):
+class OptionalMetadataTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         task_tmpdir = os.environ.get("TMPDIR")
         if not task_tmpdir:
@@ -35,42 +35,45 @@ class OptionalMetadataReproduction(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(factory_patch.stop)
 
     @staticmethod
-    def completed_download(metadata):
-        async def create_process(command):
-            argv = shlex.split(command)
+    def completed_download(metadata, *, thumbnail=False):
+        async def create_process(*arguments):
+            argv = shlex.split(arguments[0]) if len(arguments) == 1 else arguments
             output = Path(argv[argv.index("-o") + 1])
             output.write_bytes(b"dummy-downloaded-media")
             output.with_suffix(".info.json").write_text(json.dumps(metadata), encoding="utf-8")
+            if thumbnail:
+                output.with_suffix(".jpg").write_bytes(b"dummy-thumbnail")
             return CompletedProcess()
 
         return create_process
 
-    async def test_successful_download_with_missing_duration_raises(self):
-        metadata = {"title": "dummy title", "width": 64, "height": 64, "duration": None}
+    async def check_download(self, metadata, *, thumbnail=False, duration=0):
         downloader = downloader_module.Downloader({}, None)
-        with patch.object(
-            downloader_module.asyncio,
-            "create_subprocess_shell",
-            self.completed_download(metadata),
-        ):
-            with self.assertRaisesRegex(TypeError, "NoneType"):
-                async with downloader.download("https://media.invalid/video.mp4"):
-                    self.fail("Missing duration should currently fail before the context yields.")
-        print("Observed: subprocess success plus video/info output still raises int(None) for absent duration.")
-
-    async def test_successful_download_without_thumbnail_returns_missing_path(self):
-        metadata = {"title": "dummy title", "width": 64, "height": 64, "duration": 3}
-        downloader = downloader_module.Downloader({}, None)
-        with patch.object(
-            downloader_module.asyncio,
-            "create_subprocess_shell",
-            self.completed_download(metadata),
+        run_process = self.completed_download(metadata, thumbnail=thumbnail)
+        with (
+            patch.object(downloader_module.asyncio, "create_subprocess_shell", run_process),
+            patch.object(downloader_module.asyncio, "create_subprocess_exec", run_process),
         ):
             async with downloader.download("https://media.invalid/video.mp4") as video:
                 self.assertTrue(Path(video.video_filename).is_file())
-                self.assertIsNotNone(video.thumbnail_filename)
-                self.assertFalse(Path(video.thumbnail_filename).exists())
-                print("Observed: successful media output is paired with a nonexistent thumbnail upload path.")
+                self.assertEqual(video.duration, duration)
+                self.assertEqual(video.title, metadata.get("title") or "")
+                self.assertEqual(video.width, metadata.get("width") or 0)
+                self.assertEqual(video.height, metadata.get("height") or 0)
+                if thumbnail:
+                    self.assertTrue(Path(video.thumbnail_filename).is_file())
+                else:
+                    self.assertIsNone(video.thumbnail_filename)
+
+    async def test_missing_duration_and_thumbnail_use_upload_defaults(self):
+        for metadata in ({}, {"duration": None, "title": None, "width": None, "height": None}):
+            with self.subTest(metadata=metadata):
+                await self.check_download(metadata)
+
+    async def test_existing_thumbnail_and_valid_metadata_are_kept(self):
+        await self.check_download(
+            {"title": "test", "width": 64, "height": 48, "duration": 3.5}, thumbnail=True, duration=3,
+        )
 
 
 if __name__ == "__main__":
