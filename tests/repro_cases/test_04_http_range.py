@@ -50,43 +50,62 @@ def make_server():
     return server, client
 
 
-def make_request(message_id, token, range_header=None):
+def make_request(message_id, token, range_header=None, method="GET"):
     return SimpleNamespace(match_info={"message_id": str(message_id), "token": str(token)},
-                           headers={} if range_header is None else {"Range": range_header}, method="GET",
+                           headers={} if range_header is None else {"Range": range_header}, method=method,
                            transport=SimpleNamespace(is_closing=lambda: False))
 
 
-class HttpRangeRepro(unittest.IsolatedAsyncioTestCase):
-    """Assertions intentionally record the defective responses, not the desired contract."""
-
-    async def test_range_boundaries_return_wrong_body_or_length(self):
+class HttpRangeTest(unittest.IsolatedAsyncioTestCase):
+    async def test_satisfiable_ranges_have_exact_body_and_headers(self):
         cases = [
-            ("bytes=2-4", b"CD", "bytes 2-4/8", b"CDE", 3),
-            ("bytes=4-", b"EFGH", "bytes 4-8/8", b"EFGH", 4),
-            ("bytes=0-0", b"", "bytes 0-0/8", b"A", 1),
-            ("bytes=0-7", b"ABCDEFG", "bytes 0-7/8", b"ABCDEFGH", 8),
+            ("bytes=2-4", b"CDE", "bytes 2-4/8"),
+            ("bytes=4-", b"EFGH", "bytes 4-7/8"),
+            ("bytes=0-0", b"A", "bytes 0-0/8"),
+            ("bytes=0-7", b"ABCDEFGH", "bytes 0-7/8"),
+            ("bytes=-3", b"FGH", "bytes 5-7/8"),
+            ("bytes=-20", b"ABCDEFGH", "bytes 0-7/8"),
+            ("bytes=4-100", b"EFGH", "bytes 4-7/8"),
         ]
-        for header, observed_body, observed_range, expected_body, expected_length in cases:
+        for header, body, content_range in cases:
             with self.subTest(range=header):
                 server, _ = make_server()
                 with patch.object(http_module, "StreamResponse", CaptureStream):
                     response = await server._stream_handler(make_request(1, 2, header))
                 self.assertEqual(response.status, 206)
-                self.assertEqual(response.body, observed_body)
-                self.assertEqual(response.headers["Content-Range"], observed_range)
-                self.assertEqual(response.headers["Content-Length"], "8")
-                self.assertTrue(response.body != expected_body or
-                                int(response.headers["Content-Length"]) != expected_length)
-                print(f"Observed {header}: body={response.body!r}, length=8; "
-                      f"expected body={expected_body!r}, length={expected_length}.")
+                self.assertEqual(response.body, body)
+                self.assertEqual(response.headers["Content-Range"], content_range)
+                self.assertEqual(response.headers["Content-Length"], str(len(body)))
 
-    async def test_suffix_and_overlong_end_are_rejected(self):
-        for header in ("bytes=-3", "bytes=4-100"):
+    async def test_unsatisfiable_ranges_include_the_full_size(self):
+        for header in ("bytes=8-", "bytes=4-2", "bytes=-0"):
+            with self.subTest(range=header):
+                server, _ = make_server()
+                response = await server._stream_handler(make_request(1, 2, header))
+                self.assertEqual(response.status, 416)
+                self.assertEqual(response.headers["Content-Range"], "bytes */8")
+
+    async def test_malformed_and_multiple_ranges_are_rejected(self):
+        for header in ("bytes=-", "other bytes=2-4", "bytes=0-0,2-2"):
             with self.subTest(range=header):
                 server, _ = make_server()
                 response = await server._stream_handler(make_request(1, 2, header))
                 self.assertEqual(response.status, 400)
-                print(f"Observed {header}: HTTP 400; expected a satisfiable HTTP 206 response.")
+
+    async def test_full_response_and_head_report_total_length(self):
+        server, _ = make_server()
+        with patch.object(http_module, "StreamResponse", CaptureStream):
+            response = await server._stream_handler(make_request(1, 2))
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.body, b"ABCDEFGH")
+        self.assertEqual(response.headers["Content-Length"], "8")
+        self.assertNotIn("Content-Range", response.headers)
+
+        response = await server._stream_handler(make_request(1, 2, "bytes=2-4", method="HEAD"))
+        self.assertEqual(response.status, 200)
+        self.assertIsNone(response.body)
+        self.assertEqual(response.headers["Content-Length"], "8")
+        self.assertNotIn("Content-Range", response.headers)
 
 
 if __name__ == "__main__":
