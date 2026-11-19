@@ -2,6 +2,7 @@ import asyncio
 import enum
 import html
 import io
+import re
 import typing
 import xml.etree
 import xml.etree.ElementTree
@@ -138,10 +139,10 @@ class UpnpNotifyServer(RequestHandler):
     async def handle(self, request: Request) -> Response:
         local_token_raw: str = request.match_info["local_token"]
 
-        if not local_token_raw.isdigit():
+        if re.fullmatch(r"[0-9a-fA-F]+", local_token_raw) is None:
             return Response(status=400)
 
-        local_token: LocalToken = LocalToken.deserialize(int(local_token_raw))
+        local_token: LocalToken = LocalToken.deserialize(local_token_raw)
 
         if local_token not in self._devices:
             return Response(status=403)
