@@ -1,4 +1,4 @@
-"""Passing test confirms stale HTTP cleanup removes an active browser."""
+"""Verify that only the current Web playback owns the browser registration."""
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -14,8 +14,8 @@ class ActiveTransport:
         return False
 
 
-class StalePlaybackCleanupRepro(unittest.IsolatedAsyncioTestCase):
-    async def test_expired_a_unregisters_the_browser_used_by_active_b(self):
+class StalePlaybackCleanupTest(unittest.IsolatedAsyncioTestCase):
+    async def test_expired_stream_does_not_unregister_active_browser(self):
         devices = {}
         browser = WebDevice("repro browser", 10, devices)
         devices[10] = browser
@@ -31,6 +31,7 @@ class StalePlaybackCleanupRepro(unittest.IsolatedAsyncioTestCase):
         uri_b = server.add_remote_token(b)
         server._stream_transports[token_b] = {ActiveTransport()}
         self.assertIs(a.playing_device, b.playing_device)
+        await browser.play("http://example.invalid/stream/101/1", "A", token_a)
         await browser.play(uri_b, "B", token_b)
         self.assertEqual(browser.get_url_to_play(), uri_b)
         self.assertIn(10, devices)
@@ -38,7 +39,7 @@ class StalePlaybackCleanupRepro(unittest.IsolatedAsyncioTestCase):
         # Directly invoke the callback as if A's 900-second grace period elapsed.
         await server._timeout_handler(token_a, 8)
 
-        self.assertNotIn(10, devices)
+        self.assertIs(devices[10], browser)
         self.assertNotIn(token_a, server._tokens)
         self.assertNotIn(token_a, videos._playing_videos)
         self.assertIn(token_b, server._tokens)
@@ -46,6 +47,14 @@ class StalePlaybackCleanupRepro(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(next(iter(server._stream_transports[token_b])).is_closing())
         control_a.edit_text.assert_awaited_once()
         control_b.edit_text.assert_not_awaited()
+
+        # The current playback still releases its browser on cleanup.
+        server._stream_transports[token_b].clear()
+        await server._timeout_handler(token_b, 8)
+        self.assertNotIn(10, devices)
+        self.assertNotIn(token_b, server._tokens)
+        self.assertNotIn(token_b, videos._playing_videos)
+        control_b.edit_text.assert_awaited_once()
 
 
 if __name__ == "__main__":
