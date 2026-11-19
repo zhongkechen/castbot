@@ -63,10 +63,11 @@ class Downloader:
                         "bv*[vcodec~='avc|hevc|h265|h264']+ba[ext~='m4a|mp4']",
                         "b[ext=mp4][vcodec~='avc|hevc|h265|h264']"
                     ])
-                    cmd = (f"yt-dlp -v -f \"{video_format}\" -o {video_filename} "
-                           f"--write-thumbnail --write-info-json --convert-thumbnails jpg {url}")
-                    logging.info("Downloading video with command: %s", cmd)
-                    process = await asyncio.create_subprocess_shell(cmd)
+                    logging.info("Downloading video with yt-dlp")
+                    process = await asyncio.create_subprocess_exec(
+                        "yt-dlp", "-v", "-f", video_format, "-o", video_filename,
+                        "--write-thumbnail", "--write-info-json", "--convert-thumbnails", "jpg", "--", url,
+                    )
                     await process.communicate()
                     thumbnail_filename = os.path.join(tmpdir, "video1.jpg")
                     info_json = json.load(open(os.path.join(tmpdir, "video1.info.json"), encoding="utf8"))
@@ -79,9 +80,8 @@ class Downloader:
                                                        )
                 else:  # "you-get"
                     output_filename = os.path.join(tmpdir, "video1")
-                    cmd = f"you-get -O {output_filename} {url}"
-                    logging.info("Downloading video with command: %s", cmd)
-                    process = await asyncio.create_subprocess_shell(cmd)
+                    logging.info("Downloading video with you-get")
+                    process = await asyncio.create_subprocess_exec("you-get", "-O", output_filename, "--", url)
                     video_filename = output_filename + ".mp4"
                     downloaded_video = DownloadedVideo(video_filename)
                     await process.communicate()
