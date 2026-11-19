@@ -1,4 +1,4 @@
-"""A passing case confirms failed control is announced as Playing; it is not a fix."""
+"""A PLAY callback reports errors from Kodi and VLC."""
 
 import json
 import unittest
@@ -17,7 +17,7 @@ def playback_controller(device):
     video = PlayingVideo(
         local_token=LocalToken(123, 9),
         user_id=99,
-        playing_videos=SimpleNamespace(add_to_http=lambda _: "http://media.invalid/stream/123/9"),
+        playing_videos=SimpleNamespace(add_to_http=Mock(return_value="http://media.invalid/stream/123/9")),
         playing_device=device,
         video_message=SimpleNamespace(id=123, document=SimpleNamespace(file_name="dummy.mp4")),
         control_message=control,
@@ -25,20 +25,24 @@ def playback_controller(device):
     return video, control, SimpleNamespace(answer=AsyncMock())
 
 
-class FailedControlReproduction(unittest.IsolatedAsyncioTestCase):
-    async def test_kodi_401_still_announces_playing(self):
+class FailedControlTest(unittest.IsolatedAsyncioTestCase):
+    async def kodi_play(self, http_status, json_replies):
         calls = []
+        replies = iter(json_replies)
+        responses = []
+        session_closed = AsyncMock()
 
-        class UnauthorizedSession:
+        class FakeSession:
             def __init__(self, **_kwargs):
-                pass
+                self.close = session_closed
 
             async def post(self, _url, data):
                 calls.append(json.loads(data)["method"])
-                return SimpleNamespace(status=401, close=Mock())
-
-            async def close(self):
-                pass
+                response = SimpleNamespace(status=http_status, close=Mock())
+                if http_status == 200:
+                    response.json = AsyncMock(return_value=next(replies))
+                responses.append(response)
+                return response
 
         kodi = xbmc_module.XbmcDevice(
             xbmc_module.XbmcDeviceParams(
@@ -46,41 +50,56 @@ class FailedControlReproduction(unittest.IsolatedAsyncioTestCase):
             )
         )
         video, control, callback = playback_controller(kodi)
-        with patch.object(xbmc_module.aiohttp, "ClientSession", UnauthorizedSession):
-            with patch.object(xbmc_module._LOGGER, "error"):
-                await VideoControlButton("PLAY", video).on_click(callback)
+        with patch.object(xbmc_module.aiohttp, "ClientSession", FakeSession):
+            await VideoControlButton("PLAY", video).on_click(callback)
 
+        self.assertEqual(session_closed.await_count, len(calls))
+        for response in responses:
+            response.close.assert_called_once()
+        return video, control, callback, calls
+
+    async def test_kodi_401_aborts_play(self):
+        video, control, callback, calls = await self.kodi_play(401, [])
+        self.assertEqual(calls, ["Player.GetActivePlayers"])
+        video.playing_videos.add_to_http.assert_not_called()
+        control.edit_text.assert_not_awaited()
+        callback.answer.assert_awaited_once_with("Device command failed: Kodi returned HTTP 401")
+
+    async def test_kodi_rpc_error_aborts_play(self):
+        _, control, callback, calls = await self.kodi_play(200, [
+            {"result": []}, {"result": "OK"}, {"error": {"message": "Device rejected item"}},
+        ])
+        self.assertEqual(calls, ["Player.GetActivePlayers", "Playlist.Clear", "Playlist.Add"])
+        control.edit_text.assert_not_awaited()
+        callback.answer.assert_awaited_once_with("Device command failed: Kodi returned a JSON-RPC error")
+
+    async def test_successful_kodi_control_still_announces_playing(self):
+        _, control, callback, calls = await self.kodi_play(200, [
+            {"result": []}, {"result": "OK"}, {"result": "OK"}, {"result": "OK"},
+        ])
         self.assertEqual(calls, ["Player.GetActivePlayers", "Playlist.Clear", "Playlist.Add", "Player.Open"])
         self.assertTrue(control.edit_text.await_args.args[0].startswith("Playing "))
         callback.answer.assert_awaited_once_with("Playing")
-        print("Observed: all four Kodi RPCs return 401, but the controller and callback announce Playing.")
 
-    async def test_vlc_rejected_authentication_still_announces_playing(self):
-        writers = []
-
-        async def rejected_connection(*_args):
-            writer = SimpleNamespace(write=Mock(), drain=AsyncMock(), close=Mock())
-            writers.append(writer)
-            reader = SimpleNamespace(
-                read=AsyncMock(side_effect=[b"Password: " + vlc_module._AUTH_MAGIC, b"Wrong password"])
-            )
-            return reader, writer
-
+    async def test_vlc_rejected_authentication_aborts_play(self):
+        writer = SimpleNamespace(write=Mock(), drain=AsyncMock(), close=Mock())
+        reader = SimpleNamespace(
+            read=AsyncMock(side_effect=[b"Password: " + vlc_module._AUTH_MAGIC, b"Wrong password"])
+        )
         vlc = vlc_module.VlcDevice(
             vlc_module.VlcDeviceParams({"host": "device.invalid", "port": 4212, "password": "dummy-password"})
         )
         video, control, callback = playback_controller(vlc)
-        with patch.object(vlc_module.asyncio, "open_connection", rejected_connection):
-            with patch.object(vlc_module._LOGGER, "error"):
-                await VideoControlButton("PLAY", video).on_click(callback)
+        connection = AsyncMock(return_value=(reader, writer))
+        with patch.object(vlc_module.asyncio, "open_connection", connection):
+            await VideoControlButton("PLAY", video).on_click(callback)
 
-        self.assertEqual(len(writers), 3)
-        for writer in writers:
-            writer.write.assert_called_once_with(b"dummy-password" + vlc_module._EOF)
-            writer.close.assert_called_once()
-        self.assertTrue(control.edit_text.await_args.args[0].startswith("Playing "))
-        callback.answer.assert_awaited_once_with("Playing")
-        print("Observed: all three VLC connections reject authentication, but the controller announces Playing.")
+        connection.assert_awaited_once()
+        writer.write.assert_called_once_with(b"dummy-password" + vlc_module._EOF)
+        writer.close.assert_called_once()
+        video.playing_videos.add_to_http.assert_not_called()
+        control.edit_text.assert_not_awaited()
+        callback.answer.assert_awaited_once_with("Device command failed: VLC rejected authentication")
 
 
 if __name__ == "__main__":
