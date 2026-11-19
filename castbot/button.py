@@ -122,6 +122,7 @@ class DeviceMenuButton(Button):
 
     async def on_click(self, callback_query: CallbackQuery):
         assert self.finders is not None
+        await callback_query.answer()
         if self.text == "REFRESH":
             await self.finders.refresh_all_devices()
         devices = await self.finders.list_all_devices()
@@ -155,6 +156,7 @@ class DeviceSelectButton(Button):
         if not device:
             return await callback_query.answer("Wrong device")
 
+        await callback_query.answer()
         await self.playing_video.select_device(device)
 
 
@@ -177,6 +179,7 @@ class RetryDownloadButton(Button):
     async def on_click(self, callback_query: CallbackQuery):
         url = self.downloader.parse_link_message(callback_query.message.reply_to_message)
         if url:
+            await callback_query.answer()
             await self.downloader.download_url(callback_query.message.reply_to_message, url, callback_query.message)
         else:
             await callback_query.answer("Url no longer exists")
