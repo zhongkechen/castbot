@@ -5,7 +5,7 @@ import typing
 
 from pyrogram import Client
 from pyrogram.errors import MessageNotModified
-from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
+from pyrogram.types import Message, InlineKeyboardMarkup
 
 from .button import DeviceSelectButton, PlayButton, StopButton, PauseButton, ResumeButton, RefreshButton, DeviceButton
 from .client import BotClient
@@ -133,9 +133,6 @@ class PlayingVideo:
 
     def _gen_message_str(self):
         return f"for file <code>{self.video_message.id}</code>"
-
-    def _gen_device_button(self, device):
-        return InlineKeyboardButton(repr(device), f"s:{self.local_token}:{repr(device)}")
 
     async def send_stopped_control_message(self, remaining=None):
         buttons = [
