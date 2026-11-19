@@ -116,7 +116,8 @@ class Http:
             logging.info("extra route: %s %s", method, path)
             app.router.add_route(method, path, handle)
 
-        runner = web.AppRunner(app, handle_signals=True)
+        # Stream and Web API paths contain credentials and must stay out of access logs.
+        runner = web.AppRunner(app, handle_signals=True, access_log=None)
         await runner.setup()
         try:
             site = web.TCPSite(runner, self._listen_host, self._listen_port)
@@ -282,7 +283,7 @@ class Http:
         except TypeError:
             filename = f"file_{message.media.document.id}"
 
-        logging.info("Incoming streaming request: %s %s %s", request.method, local_token, request.headers)
+        logging.info("Incoming streaming request: %s message %s", request.method, local_token.message_id)
 
         if request.method == "HEAD":
             response = Response(status=status_code)
@@ -326,5 +327,5 @@ class Http:
             await stream.write_eof()
             stream.force_close()
         except (ConnectionResetError, BrokenPipeError, ConnectionError):
-            logging.warning("Broken streaming connection: %s %s", local_token, request.headers)
+            logging.warning("Broken streaming connection for message %s", local_token.message_id)
         return stream

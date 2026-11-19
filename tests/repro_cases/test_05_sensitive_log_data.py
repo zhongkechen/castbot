@@ -1,6 +1,7 @@
-"""Passing tests confirm dummy device credentials and media tokens reach logs."""
-import re
+"""Keep credentials out of application and access logs."""
 import unittest
+
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -10,7 +11,7 @@ import castbot.http as http_module
 from castbot.device import DeviceFinder
 from castbot.devices.web import WebDeviceFinder
 from castbot.http import Http
-from castbot.utils import LocalToken
+from castbot.utils import ConfigError, LocalToken
 
 
 class FakeStreamResponse:
@@ -31,19 +32,21 @@ class FakeStreamResponse:
         pass
 
 
-class SensitiveLogDataRepro(unittest.IsolatedAsyncioTestCase):
-    def test_device_finder_logs_a_supplied_dummy_password(self):
+class SensitiveLogDataTest(unittest.IsolatedAsyncioTestCase):
+    def test_device_finder_logs_discovery_without_configuration(self):
         config = {"type": "web", "password": "dummy-web-password"}
         with patch.object(DeviceFinder, "device_finder", set()):
             with self.assertLogs(level="INFO") as recorded:
                 WebDeviceFinder(config)
+                with self.assertRaises(ConfigError):
+                    WebDeviceFinder(config)
         log = "\n".join(recorded.output)
-        self.assertIn("DeviceFinder added:", log)
-        self.assertIn(config["password"], log)
-        print("Observed: the device startup log includes the dummy password verbatim.")
+        self.assertIn("DeviceFinder added: WebDeviceFinder", log)
+        self.assertIn("Duplicate DeviceFinder config: WebDeviceFinder", log)
+        self.assertNotIn(config["password"], log)
 
-    async def test_real_stream_handler_logs_reversible_token_and_request_headers(self):
-        token = LocalToken(123, 456)
+    async def test_stream_logs_exclude_token_and_headers_for_success_and_disconnect(self):
+        token = LocalToken(123, 935871624)
         document = Document(
             id=7, access_hash=8, file_reference=b"dummy-reference", date=0,
             mime_type="video/mp4", size=4, dc_id=4, attributes=[],
@@ -59,22 +62,35 @@ class SensitiveLogDataRepro(unittest.IsolatedAsyncioTestCase):
         server._feed_downloaded_blocks = Mock()
         server._feed_stream_transport = Mock()
         request = SimpleNamespace(
-            match_info={"message_id": "123", "token": "456"},
+            match_info={"message_id": "123", "token": str(token.token)},
             headers={"Authorization": "Bearer dummy-client-header"},
             method="GET", transport=SimpleNamespace(is_closing=lambda: False),
         )
         with patch.object(http_module, "StreamResponse", FakeStreamResponse):
             with self.assertLogs(level="INFO") as recorded:
                 response = await server._stream_handler(request)
+                bot_client.get_block.side_effect = ConnectionResetError
+                await server._stream_handler(request)
         log = "\n".join(recorded.output)
         self.assertEqual(response.status, 200)
-        observed = re.search(r"Incoming streaming request: GET ([0-9a-f]+) ", log)
-        self.assertIsNotNone(observed)
-        recovered = LocalToken.deserialize(observed.group(1))
-        self.assertEqual((recovered.message_id, recovered.token), (123, 456))
-        self.assertIn("dummy-client-header", log)
-        bot_client.get_message.assert_awaited_once_with(123)
-        print("Observed: the handler log reveals the full dummy media token and dummy Authorization header.")
+        self.assertIn("Incoming streaming request: GET message 123", log)
+        self.assertIn("Broken streaming connection for message 123", log)
+        self.assertNotIn(str(token), log)
+        self.assertNotIn(str(token.token), log)
+        self.assertNotIn("dummy-client-header", log)
+
+    async def test_http_server_disables_logging_paths_with_credentials(self):
+        server = Http({"listen_port": 8080, "listen_host": "127.0.0.1"}, None, [])
+        with (
+            patch.object(http_module.web, "AppRunner") as runner_factory,
+            patch.object(http_module.web, "TCPSite") as site_factory,
+        ):
+            runner_factory.return_value.setup = AsyncMock()
+            runner_factory.return_value.cleanup = AsyncMock()
+            site_factory.return_value.start = AsyncMock(side_effect=asyncio.CancelledError)
+            with self.assertRaises(asyncio.CancelledError):
+                await server.start()
+        self.assertIsNone(runner_factory.call_args.kwargs["access_log"])
 
 
 if __name__ == "__main__":
