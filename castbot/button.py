@@ -66,11 +66,12 @@ class VideoControlButton(Button):
         self.playing_video = playing_video
 
     def get_data(self):
-        return gen_data(self.PREFIX, self.playing_video.local_token, self.text)
+        return gen_control_data(self.PREFIX, self.playing_video, self.text)
 
     @classmethod
     async def from_data(cls, data, context: Context):
-        prefix, local_token, action = parse_data(data)
+        prefix, local_token, payload = parse_data(data)
+        action, _, device_id = payload.partition("~")
         if prefix != cls.PREFIX:
             return None
         if action not in cls.ACTION_TO_STATUS:
@@ -78,7 +79,8 @@ class VideoControlButton(Button):
 
         playing_video = await context.playing_videos.reconstruct_playing_video(local_token,
                                                                                context.from_user,
-                                                                               context.message)
+                                                                               context.message,
+                                                                               device_id=device_id or None)
         return cls(action, playing_video)
 
     async def on_click(self, callback_query: CallbackQuery):
@@ -100,24 +102,32 @@ class DeviceMenuButton(Button):
     OLD_PREFIX = "c"
     ACTIONS = ["REFRESH", "DEVICE"]
 
+    @classmethod
+    def matches(cls, data: str) -> bool:
+        return super().matches(data) or (
+            data.startswith(cls.OLD_PREFIX + ":") and data.rsplit(":", 1)[-1] in cls.ACTIONS
+        )
+
     def __init__(self, text: str, playing_video, finders=None):
         self.playing_video = playing_video
         self.text = text
         self.finders = finders
 
     def get_data(self):
-        return gen_data(self.PREFIX, self.playing_video.local_token, self.text)
+        return gen_control_data(self.PREFIX, self.playing_video, self.text)
 
     @classmethod
     async def from_data(cls, data, context: Context):
-        prefix, local_token, action = parse_data(data)
+        prefix, local_token, payload = parse_data(data)
+        action, _, device_id = payload.partition("~")
         if prefix not in [cls.PREFIX, cls.OLD_PREFIX]:
             return None
         if action not in cls.ACTIONS:
             return None
         playing_video = await context.playing_videos.reconstruct_playing_video(local_token,
                                                                                context.from_user,
-                                                                               context.message)
+                                                                               context.message,
+                                                                               device_id=device_id or None)
         return cls(action, playing_video, context.finders)
 
     async def on_click(self, callback_query: CallbackQuery):
@@ -129,29 +139,40 @@ class DeviceMenuButton(Button):
 
 
 class DeviceSelectButton(Button):
-    PREFIX = "s"
+    PREFIX = "s2"
+    OLD_PREFIX = "s"
 
-    def __init__(self, text: str, playing_video, finders=None):
+    @classmethod
+    def matches(cls, data: str) -> bool:
+        return super().matches(data) or data.startswith(cls.OLD_PREFIX + ":")
+
+    def __init__(self, text: str, playing_video, finders=None, *, device_id=None):
         self.playing_video = playing_video
         self.text = text
         self.finders = finders
+        self.device_id = device_id
 
     def get_data(self):
-        return gen_data(self.PREFIX, self.playing_video.local_token, self.text)
+        if self.device_id is None:
+            return gen_data(self.OLD_PREFIX, self.playing_video.local_token, self.text)
+        return gen_data(self.PREFIX, self.playing_video.local_token, self.device_id)
 
     @classmethod
     async def from_data(cls, data, context):
         prefix, local_token, device = parse_data(data)
-        if prefix != cls.PREFIX:
+        if prefix not in (cls.PREFIX, cls.OLD_PREFIX):
             return None
         playing_video = await context.playing_videos.reconstruct_playing_video(local_token,
                                                                                context.from_user,
                                                                                context.message)
-        return cls(device, playing_video, context.finders)
+        return cls(device, playing_video, context.finders, device_id=device if prefix == cls.PREFIX else None)
 
     async def on_click(self, callback_query: CallbackQuery):
         assert self.finders is not None
-        device = await self.finders.find_device_by_name(self.text)
+        if self.device_id is None:
+            device = await self.finders.find_device_by_name(self.text)
+        else:
+            device = await self.finders.find_device_by_id(self.device_id)
         if not device:
             return await callback_query.answer("Wrong device")
 
@@ -218,12 +239,17 @@ def gen_data(prefix, local_token, payload):
     return f"{prefix}:{local_token}:{payload}"
 
 
+def gen_control_data(prefix, video, action):
+    device = video.playing_device
+    payload = f"{action}~{device.get_device_id()}" if device else action
+    return gen_data(prefix, video.local_token, payload)
+
+
 def parse_data(data):
-    if data.count(":") == 3:
-        # the old format
-        prefix, message_id, token, payload = data.split(":")
-        local_token = LocalToken(message_id, token)
-    else:
-        prefix, local_token_raw, payload = data.split(":")
-        local_token = LocalToken.deserialize(local_token_raw)
-    return prefix, local_token, payload
+    prefix, token, payload = data.split(":", 2)
+    # Legacy callbacks used a separate decimal message ID and token.
+    # Packed tokens for positive message IDs occupy at least 17 hex digits.
+    legacy_token, separator, legacy_payload = payload.partition(":")
+    if len(token) < 17 and token.isdecimal() and separator and legacy_token.isdecimal():
+        return prefix, LocalToken(token, legacy_token), legacy_payload
+    return prefix, LocalToken.deserialize(token), payload
