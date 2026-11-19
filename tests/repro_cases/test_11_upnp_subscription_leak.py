@@ -1,4 +1,4 @@
-"""Passing test confirms repeated UPnP play leaves the old subscription open."""
+"""Verify that UPnP subscriptions belong to the active playback token."""
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -21,8 +21,8 @@ class RecordedSubscription:
         self.started = False
 
 
-class UpnpSubscriptionLeakRepro(unittest.IsolatedAsyncioTestCase):
-    async def test_replacing_and_closing_b_does_not_close_subscription_a(self):
+class UpnpSubscriptionTest(unittest.IsolatedAsyncioTestCase):
+    async def test_replacing_playback_closes_previous_subscription_and_ignores_stale_cleanup(self):
         action = SimpleNamespace(async_call=AsyncMock())
         service = SimpleNamespace(action=lambda _name: action)
         device = SimpleNamespace(service=lambda _schema: service, friendly_name="repro TV")
@@ -42,16 +42,41 @@ class UpnpSubscriptionLeakRepro(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(subscriptions), 2)
             first, second = subscriptions
             self.assertIs(player._subscribe_task, second)
-            self.assertTrue(first.started)
-            self.assertEqual(first.close_count, 0)
+            self.assertFalse(first.started)
+            self.assertEqual(first.close_count, 1)
+            self.assertNotIn(token_a, notifications._devices)
+            self.assertIn(token_b, notifications._devices)
+            await player.on_close(token_a)
+            self.assertTrue(second.started)
+            self.assertEqual(second.close_count, 0)
+            await player.on_close(token_b)
             await player.on_close(token_b)
 
-        self.assertTrue(first.started)
-        self.assertEqual(first.close_count, 0)
+        self.assertFalse(first.started)
+        self.assertEqual(first.close_count, 1)
         self.assertFalse(second.started)
         self.assertEqual(second.close_count, 1)
-        self.assertIn(token_a, notifications._devices)
+        self.assertNotIn(token_a, notifications._devices)
         self.assertNotIn(token_b, notifications._devices)
+
+    async def test_failed_play_closes_subscription_and_removes_notification(self):
+        actions = {
+            "SetAVTransportURI": SimpleNamespace(async_call=AsyncMock()),
+            "Play": SimpleNamespace(async_call=AsyncMock(side_effect=ConnectionError)),
+        }
+        service = SimpleNamespace(action=actions.__getitem__)
+        device = SimpleNamespace(service=lambda _schema: service, friendly_name="test TV")
+        notifications = UpnpNotifyServer()
+        player = UpnpDevice(device, notifications)
+        token = LocalToken(101, 1)
+        subscription = RecordedSubscription(device, service, "http://example.invalid")
+        with patch("castbot.devices.upnp.SubscribeTask", return_value=subscription):
+            with self.assertRaises(ConnectionError):
+                await player.play("http://example.invalid/stream/101/1", "A", token)
+
+        self.assertEqual(subscription.close_count, 1)
+        self.assertIsNone(player._subscribe_task)
+        self.assertNotIn(token, notifications._devices)
 
 
 if __name__ == "__main__":
