@@ -38,6 +38,11 @@
                     source.setAttribute("src", xhttp.responseText);
                     player.load();
                     player.play();
+                } else if (this.status === 204) {
+                    player.pause();
+                    source.removeAttribute("src");
+                    player.load();
+                    player.hidden = true;
                 }
 
                 if (this.status === 404) {
