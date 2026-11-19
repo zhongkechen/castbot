@@ -8,16 +8,16 @@ import typing
 from async_lru import alru_cache
 from pyrogram import Client
 from pyrogram.enums import ParseMode
-from pyrogram.errors import FloodWait
+from pyrogram.errors import FileReferenceExpired, FloodWait
 from pyrogram.handlers.handler import Handler
 from pyrogram.raw.functions.auth import ExportAuthorization, ImportAuthorization
 from pyrogram.raw.functions.help import GetConfig
 from pyrogram.raw.functions.messages import GetMessages
 from pyrogram.raw.functions.upload import GetFile
-from pyrogram.raw.types import InputMessageID, Message as RawMessage, InputDocumentFileLocation
+from pyrogram.raw.types import Document, InputMessageID, Message as RawMessage, InputDocumentFileLocation
+from pyrogram.raw.types import MessageMediaDocument
 from pyrogram.raw.types.upload import File
 from pyrogram.session import Session, Auth
-from pyrogram.types import Message
 
 
 class BotClient:
@@ -49,7 +49,7 @@ class BotClient:
         )
 
     @alru_cache
-    async def get_message(self, message_id: int) -> Message:
+    async def get_message(self, message_id: int) -> RawMessage:
         messages = await self._client.invoke(GetMessages(id=[InputMessageID(id=message_id)]))
 
         if not messages.messages:
@@ -72,15 +72,41 @@ class BotClient:
             raise ConnectionError()
 
     async def get_block(self, message: RawMessage, offset: int, block_size: int) -> bytes:
-        session = self._client.media_sessions.get(message.media.document.dc_id)
+        document = message.media.document
+        expired_reference = document.file_reference
+        try:
+            return await self._get_document_block(document, offset, block_size)
+        except FileReferenceExpired:
+            latest_message = await self.get_message(message.id)
+            reference = self._matching_file_reference(latest_message, document.id)
+            if reference == expired_reference:
+                self.get_message.cache_invalidate(message.id)
+                latest_message = await self.get_message(message.id)
+                reference = self._matching_file_reference(latest_message, document.id)
+            if reference is None or reference == expired_reference:
+                raise
+            # Keep streams using the original message on the refreshed reference.
+            document.file_reference = reference
+            return await self._get_document_block(document, offset, block_size)
+
+    @staticmethod
+    def _matching_file_reference(message: RawMessage, document_id: int) -> bytes | None:
+        media = message.media
+        if isinstance(media, MessageMediaDocument) and isinstance(media.document, Document):
+            if media.document.id == document_id:
+                return media.document.file_reference
+        return None
+
+    async def _get_document_block(self, document: Document, offset: int, block_size: int) -> bytes:
+        session = self._client.media_sessions.get(document.dc_id)
 
         request = GetFile(
             offset=offset,
             limit=block_size,
             location=InputDocumentFileLocation(
-                id=message.media.document.id,
-                access_hash=message.media.document.access_hash,
-                file_reference=message.media.document.file_reference,
+                id=document.id,
+                access_hash=document.access_hash,
+                file_reference=document.file_reference,
                 thumb_size="",
             ),
         )
