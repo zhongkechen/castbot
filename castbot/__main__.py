@@ -50,8 +50,10 @@ async def health_check(config):
     url = f"http://{config['http']['listen_host']}:{config['http']['listen_port']}/healthcheck"
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url):
-                pass
+            async with session.get(url, allow_redirects=False) as response:
+                if response.status != 200:
+                    logging.error("Health check returned HTTP %d", response.status)
+                    return 1
     except Exception:
         logging.exception("Failed health check")
         return 1
