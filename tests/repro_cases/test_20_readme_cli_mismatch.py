@@ -1,7 +1,6 @@
-"""A passing case confirms README/CLI incompatibilities; it is not a fix."""
+"""Keep the README examples aligned with the supported CLI and Python version."""
 
-import contextlib
-import io
+import asyncio
 import os
 import re
 import shlex
@@ -17,11 +16,11 @@ import castbot.__main__ as main_module
 REPOSITORY = Path(main_module.__file__).resolve().parents[1]
 
 
-class ReadmeCommandReproduction(unittest.TestCase):
-    def test_the_documented_pip_command_is_rejected_before_startup(self):
+class ReadmeCommandTest(unittest.TestCase):
+    def test_the_documented_pip_command_runs_the_cli(self):
         readme = (REPOSITORY / "README.md").read_text(encoding="utf-8")
-        match = re.search(r"^castbot -c \S+ -v 1$", readme, re.MULTILINE)
-        self.assertIsNotNone(match, "The reproducer must use the actual documented command.")
+        match = re.search(r"^castbot -c .+$", readme, re.MULTILINE)
+        self.assertIsNotNone(match, "The test must use the actual documented command.")
         argv = shlex.split(match.group(0))
         task_tmpdir = os.environ.get("TMPDIR")
         if not task_tmpdir:
@@ -31,22 +30,16 @@ class ReadmeCommandReproduction(unittest.TestCase):
             config = Path(directory) / "config.toml"
             config.write_text("[reproduction]\nvalue = 1\n", encoding="utf-8")
             argv[argv.index("-c") + 1] = str(config)
-            stderr = io.StringIO()
-            # If argument behavior changes, these stubs prevent any real bot startup.
-            safe_loop = SimpleNamespace(run_until_complete=lambda coroutine: coroutine.close())
-            with patch.object(main_module.sys, "argv", argv):
-                with patch.object(main_module, "async_main", new_callable=AsyncMock) as startup:
-                    with patch.object(main_module.asyncio, "get_event_loop", return_value=safe_loop):
-                        with contextlib.redirect_stderr(stderr):
-                            with self.assertRaises(SystemExit) as raised:
-                                main_module.entry_point()
-                    startup.assert_not_called()
+            safe_loop = SimpleNamespace(run_until_complete=asyncio.run)
+            with (
+                patch.object(main_module.sys, "argv", argv),
+                patch.object(main_module, "async_main", new_callable=AsyncMock) as startup,
+                patch.object(main_module.asyncio, "get_event_loop", return_value=safe_loop),
+            ):
+                main_module.entry_point()
+            startup.assert_awaited_once_with({"reproduction": {"value": 1}})
 
-        self.assertEqual(raised.exception.code, 2)
-        self.assertIn("unrecognized arguments: 1", stderr.getvalue())
-        print("Observed: README's -v 1 command exits 2 with unrecognized arguments: 1, before startup.")
-
-    def test_documented_python_minimum_is_below_package_requirement(self):
+    def test_documented_python_minimum_matches_package_requirement(self):
         readme = (REPOSITORY / "README.md").read_text(encoding="utf-8")
         metadata = tomllib.loads((REPOSITORY / "pyproject.toml").read_text(encoding="utf-8"))
         documented = re.search(r"Note: Make sure you have a version of Python (\d+\.\d+)\+", readme)
@@ -55,8 +48,7 @@ class ReadmeCommandReproduction(unittest.TestCase):
         self.assertIsNotNone(declared)
         documented_version = tuple(map(int, documented.group(1).split(".")))
         declared_version = tuple(map(int, declared.group(1).split(".")))
-        self.assertLess(documented_version, declared_version)
-        print(f"Observed: README permits Python {documented.group(1)}+, but package requires {declared.group(1)}+.")
+        self.assertEqual(documented_version, declared_version)
 
 
 if __name__ == "__main__":
