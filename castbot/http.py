@@ -220,19 +220,18 @@ class Http:
         del _debounce
 
     async def _stream_handler(self, request: Request) -> Response | StreamResponse:
-        _message_id: str = request.match_info["message_id"]
-
-        if not _message_id.isdigit():
+        message_id = request.match_info["message_id"]
+        token = request.match_info["token"]
+        if not all(value.isascii() and value.isdecimal() for value in (message_id, token)):
             return Response(status=401)
 
-        _token: str = request.match_info["token"]
-
-        if not _token.isdigit():
+        try:
+            local_token = LocalToken(message_id, token)
+        except ValueError:
             return Response(status=401)
 
-        local_token = LocalToken(_message_id, _token)
-        del _token
-        del _message_id
+        if local_token.token >= 1 << 64:
+            return Response(status=403)
 
         if not self._check_local_token(local_token):
             return Response(status=403)

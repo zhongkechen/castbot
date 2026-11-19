@@ -56,22 +56,28 @@ def make_request(message_id, token, range_header=None):
                            transport=SimpleNamespace(is_closing=lambda: False))
 
 
-class MediaTokenScopeRepro(unittest.IsolatedAsyncioTestCase):
-    """A passing reproducer confirms the existing unauthorized cross-message access."""
-
-    async def test_forged_token_fetches_unauthorized_message(self):
+class MediaTokenScopeTest(unittest.IsolatedAsyncioTestCase):
+    async def test_out_of_range_token_is_rejected_before_fetching_media(self):
         server, client = make_server()
-        original = LocalToken(1, 2)
-        target_id = 2
-        forged_token = ((original.message_id ^ target_id) << 64) ^ original.token
-        self.assertGreaterEqual(forged_token, 1 << 64)
-        self.assertEqual(LocalToken(target_id, forged_token), original)
+        response = await server._stream_handler(make_request(2, (1 << 64) + 2))
+        self.assertEqual(response.status, 403)
+        self.assertEqual(client.requested_ids, [])
+
+    async def test_registered_token_still_streams_media(self):
+        server, client = make_server()
         with patch.object(http_module, "StreamResponse", CaptureStream):
-            response = await server._stream_handler(make_request(target_id, forged_token))
+            response = await server._stream_handler(make_request(1, 2))
         self.assertEqual(response.status, 200)
-        self.assertEqual(client.requested_ids, [target_id])
         self.assertEqual(response.body, b"ABCDEFGH")
-        print("Observed: message 2 returned HTTP 200 with only message 1 authorized; expected HTTP 403.")
+        self.assertEqual(client.requested_ids, [1])
+
+    def test_token_identity_and_wire_format(self):
+        token = LocalToken(1, 0)
+        self.assertEqual(token.token, 0)
+        self.assertEqual(str(token), "10000000000000000")
+        self.assertEqual(token, LocalToken.deserialize(str(token)))
+        self.assertNotEqual(token, LocalToken(2, 0))
+        self.assertNotEqual(token, LocalToken(1, 1))
 
     async def test_unrelated_normal_token_is_rejected(self):
         server, client = make_server()
