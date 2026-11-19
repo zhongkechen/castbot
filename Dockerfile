@@ -23,4 +23,4 @@ RUN /root/.local/bin/poetry install
 
 HEALTHCHECK CMD ["castbot", "--healthcheck"]
 
-CMD ["/app/.venv/bin/castbot", "-vv"]
+CMD ["castbot", "-vv"]
