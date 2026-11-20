@@ -180,17 +180,12 @@ class Http:
         _debounce: typing.Optional[AsyncDebounce] = None  # avoid garbage collector
 
         if all(t.is_closing() for t in self._get_stream_transports(local_token)):
-            blocks = (size // self._block_size) + 1
-
-            if local_token in self._downloaded_blocks:
-                remain_blocks = blocks - len(self._downloaded_blocks[local_token])
-                del self._downloaded_blocks[local_token]
-            else:
-                remain_blocks = blocks
+            blocks = (size + self._block_size - 1) // self._block_size
+            downloaded = len(self._downloaded_blocks.pop(local_token, ()))
 
             if local_token in self._tokens:
-                remain_blocks_perceptual = remain_blocks / blocks * 100
-                await self._tokens[local_token].close(remain_blocks_perceptual)
+                remaining = max(0, blocks - downloaded) / blocks * 100 if blocks else 0
+                await self._tokens[local_token].close(remaining)
                 del self._tokens[local_token]
 
             if local_token in self._stream_debounce:
