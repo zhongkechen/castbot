@@ -2,7 +2,7 @@
 import unittest
 from types import SimpleNamespace
 
-from pyrogram.raw.types import KeyboardButtonCallback
+from pyrogram.raw.types import InlineButtonTypeCallback, KeyboardInlineButton
 
 from castbot.button import DeviceButton, DeviceSelectButton, PlayButton, RetryButton
 from castbot.utils import LocalToken
@@ -26,9 +26,10 @@ class InlineKeyboardConstructorTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(actual.callback_data, expected_data)
                 self.assertIsNone(actual.icon_custom_emoji_id)
                 raw = await actual.write(None)
-                self.assertIsInstance(raw, KeyboardButtonCallback)
+                self.assertIsInstance(raw, KeyboardInlineButton)
                 self.assertEqual(raw.text, application_button.text)
-                self.assertEqual(raw.data, expected_data.encode("utf-8"))
+                self.assertIsInstance(raw.type, InlineButtonTypeCallback)
+                self.assertEqual(raw.type.data, expected_data.encode("utf-8"))
 
 
 if __name__ == "__main__":

@@ -19,8 +19,8 @@ toml = {version="^0.10", python="<3.11"}
 you-get = "^0.4.1743"
 yt-dlp = "^2026.7.4"
 yt-dlp-ejs = "^0.8.0"
-pyroblack = ">=2.9.9,<4.0.0"
 tgcrypto = "^1.2.5"
+kurigram = "^2.2.27"
 
 
 [tool.poetry.group.dev.dependencies]
