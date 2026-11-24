@@ -231,10 +231,11 @@ class PlayingVideo:
 
     @staticmethod
     def pyrogram_filename(message: Message) -> str:
-        named_media_types = ("document", "video", "audio", "video_note", "animation")
-        try:
-            return next(
-                getattr(message, t, None).file_name for t in named_media_types if getattr(message, t, None) is not None
-            )
-        except StopIteration as error:
-            raise TypeError() from error
+        for media_type in ("document", "video", "audio", "video_note", "animation"):
+            media = getattr(message, media_type, None)
+            filename = getattr(media, "file_name", None)
+            if filename:
+                return filename
+            if media_type == "video_note" and media is not None:
+                return f"video_note_{message.id}.mp4"
+        raise TypeError()
