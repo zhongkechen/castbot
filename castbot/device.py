@@ -104,8 +104,9 @@ class DeviceFinderCollection:
         try:
             async with async_timeout.timeout(finder.request_timeout + 1):
                 return await finder.find()
-        except asyncio.CancelledError:
-            pass
+        except Exception as error:
+            logging.warning("Device refresh failed for %s (%s)", type(finder).__name__, type(error).__name__)
+            return []
 
     async def refresh_all_devices(self):
         find_devices = [self._refresh_one_finder(finder) for finder in self._finders]
