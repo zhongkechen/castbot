@@ -59,10 +59,10 @@ class DeviceFinder(abc.ABC):
         self.config = config
         self.request_timeout = int(config.get("request_timeout", 5))
         if self not in self.device_finder:
-            logging.info("DeviceFinder added: %s", config)
+            logging.info("DeviceFinder added: %s", type(self).__name__)
             self.device_finder.add(self)
         else:
-            logging.error("Duplicate DeviceFinder config: %s", config)
+            logging.error("Duplicate DeviceFinder config: %s", type(self).__name__)
             raise ConfigError("Multiple same devices specified in config")
 
     def __hash__(self):
