@@ -17,7 +17,7 @@ from pyrogram.raw.functions.upload import GetFile
 from pyrogram.raw.types import InputMessageID, Message as RawMessage, InputDocumentFileLocation
 from pyrogram.raw.types.upload import File
 from pyrogram.session import Session, Auth
-from pyrogram.types import Message
+from pyrogram.types import Message, ReplyParameters
 
 
 class BotClient:
@@ -45,7 +45,7 @@ class BotClient:
             chat_id,
             text=text,
             parse_mode=ParseMode.HTML,
-            reply_to_message_id=message_id,
+            reply_parameters=ReplyParameters(message_id=message_id),
         )
 
     @alru_cache
@@ -95,12 +95,30 @@ class BotClient:
 
         return result.bytes
 
+    @staticmethod
+    def _select_dc_option(dc_options, dc_id: int, ipv6: bool = False):
+        options = [dc for dc in dc_options if dc.id == dc_id and bool(dc.ipv6) == ipv6 and not dc.cdn]
+        non_tcpo_options = [dc for dc in options if not dc.tcpo_only]
+        candidates = non_tcpo_options or options
+
+        prod_options = [dc for dc in candidates if not dc.media_only]
+        if prod_options:
+            return prod_options[0]
+
+        media_options = [dc for dc in candidates if dc.media_only]
+        if media_options:
+            return media_options[0]
+
+        return None
+
     async def start(self):
         await self._client.start()
 
         config = await self._client.invoke(GetConfig())
-        dc_ids = set(x.id for x in config.dc_options)
+        dc_ids = set(x.id for x in config.dc_options if not x.cdn)
         keys_path = self._session_name + ".keys"
+        test_mode = bool(await self._client.storage.test_mode())
+        ipv6 = bool(getattr(self._client, "ipv6", False))
 
         if os.path.exists(keys_path):
             keys = pickle.load(open(keys_path, "rb"))
@@ -108,19 +126,28 @@ class BotClient:
             keys = {}
 
         for dc_id in dc_ids:
+            dc_option = self._select_dc_option(config.dc_options, dc_id, ipv6=ipv6)
+            if dc_option is None:
+                continue
+
+            server_address = dc_option.ip_address
+            port = dc_option.port
+
             session = functools.partial(
                 Session,
                 self._client,
                 dc_id,
+                server_address,
+                port,
                 is_media=True,
-                test_mode=False,
+                test_mode=test_mode,
             )
 
             if dc_id != await self._client.storage.dc_id():
                 if dc_id not in keys:
                     exported_auth = await self._client.invoke(ExportAuthorization(dc_id=dc_id))
 
-                    auth = Auth(self._client, dc_id, False)
+                    auth = Auth(self._client, dc_id, server_address, port, test_mode)
                     auth_key = await auth.create()
 
                     session = session(auth_key)

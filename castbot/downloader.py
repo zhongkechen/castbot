@@ -8,7 +8,7 @@ import tempfile
 from typing import Optional
 
 from pyrogram import Client
-from pyrogram.types import Message, InlineKeyboardMarkup
+from pyrogram.types import InlineKeyboardMarkup, LinkPreviewOptions, Message
 
 
 _URL_PATTERN = r"(http|https):\/\/([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:\/~+#-]*[\w@?^=%&\/~+#-])"
@@ -103,8 +103,7 @@ class Downloader:
         if not reply_message:
             reply_message = await message.reply(
                 f"Downloading url {url}",
-                reply_to_message_id=message.id,
-                disable_web_page_preview=True,
+                link_preview_options=LinkPreviewOptions(is_disabled=True),
             )
         else:
             await reply_message.edit_text(f"Downloading url {url}")
@@ -116,13 +115,11 @@ class Downloader:
                 reader = open(downloaded_video.video_filename, mode="rb")
                 video_message = await message.reply_video(
                     reader,
-                    quote=True,
                     caption=downloaded_video.title,
                     width=downloaded_video.width,
                     height=downloaded_video.height,
                     thumb=downloaded_video.thumbnail_filename,
                     duration=downloaded_video.duration,
-                    reply_to_message_id=message.id,
                 )
             await reply_message.edit_text("Upload completed.")
             await reply_message.delete()
