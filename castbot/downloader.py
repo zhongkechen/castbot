@@ -70,14 +70,16 @@ class Downloader:
                     )
                     await process.communicate()
                     thumbnail_filename = os.path.join(tmpdir, "video1.jpg")
-                    info_json = json.load(open(os.path.join(tmpdir, "video1.info.json"), encoding="utf8"))
-                    downloaded_video = DownloadedVideo(video_filename,
-                                                       thumbnail_filename=thumbnail_filename,
-                                                       title=info_json.get("title"),
-                                                       width=info_json.get("width"),
-                                                       height=info_json.get("height"),
-                                                       duration=int(info_json.get("duration"))
-                                                       )
+                    with open(os.path.join(tmpdir, "video1.info.json"), encoding="utf8") as info_file:
+                        info = json.load(info_file)
+                    downloaded_video = DownloadedVideo(
+                        video_filename,
+                        thumbnail_filename=thumbnail_filename if os.path.isfile(thumbnail_filename) else None,
+                        title=info.get("title") or "",
+                        width=info.get("width") or 0,
+                        height=info.get("height") or 0,
+                        duration=int(info.get("duration") or 0),
+                    )
                 else:  # "you-get"
                     output_filename = os.path.join(tmpdir, "video1")
                     logging.info("Downloading video with you-get")
