@@ -14,8 +14,11 @@ A Telegram Bot to stream contents (Telegram videos, Youtube videos and more) to 
 
 ## Feature
 - Stream Telegram videos to any device that supports UPnP (AVTransport), Chromecast, Vlc (telnet api), Kodi (xbmc http api)
+- Stream individual YouTube videos through CastBot to any configured playback device
 - Web interface that plays videos in your browser
 - Download videos by URLs and stream to devices
+
+Send a YouTube video link to the bot, choose a device and press **PLAY**. The player fetches video from CastBot over HTTP as it plays. The bot uses yt-dlp to resolve an MP4 with H.264 video and AAC audio. Availability depends on the formats YouTube offers for each video. If playback fails, stop playback and press **PLAY** to resolve a fresh media URL. For installations outside Docker, make Deno available on the bot's `PATH` for yt-dlp's YouTube support.
 
 ## Known issues
 

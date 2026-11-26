@@ -10,8 +10,15 @@ from typing import Optional
 from pyrogram import Client
 from pyrogram.types import InlineKeyboardMarkup, LinkPreviewOptions, Message
 
+from .youtube import youtube_video_id
 
-_URL_PATTERN = r"(http|https):\/\/([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:\/~+#-]*[\w@?^=%&\/~+#-])"
+
+_URL_PATTERN = re.compile(r"(http|https):\/\/([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:\/~+#-]*[\w@?^=%&\/~+#-])")
+
+
+def extract_url(text: str | None) -> str | None:
+    result = _URL_PATTERN.search(text or "")
+    return result.group() if result else None
 
 
 class DownloadedVideo:
@@ -42,14 +49,7 @@ class Downloader:
 
     @staticmethod
     def parse_link_message(message: Message):
-        if not message:
-            return None
-        text = message.text.strip()
-        result = re.search(_URL_PATTERN, text)
-        if not result:
-            return None
-        url = result.group()
-        return url
+        return extract_url(message.text) if message else None
 
     @contextlib.asynccontextmanager
     async def download(self, url):
@@ -102,6 +102,10 @@ class Downloader:
         return None
 
     async def download_url(self, message: Message, url: str, reply_message=None):
+        video_id = youtube_video_id(url)
+        if video_id:
+            return await self._playing_videos.on_new_youtube(message, video_id, reply_message)
+
         if not reply_message:
             reply_message = await message.reply(
                 f"Downloading url {url}",
@@ -133,3 +137,4 @@ class Downloader:
             buttons = [[RetryButton(self).get_button()]]
             await reply_message.edit_text(f"Exception thrown {e} when downloading {url}",
                                           reply_markup=InlineKeyboardMarkup(buttons))
+        return None

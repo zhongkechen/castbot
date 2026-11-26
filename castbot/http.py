@@ -5,13 +5,14 @@ import re
 import typing
 from urllib.parse import quote
 
-from aiohttp import web
+from aiohttp import ClientError, web
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response, StreamResponse
 from pyrogram.raw.types import MessageMediaDocument, Document, DocumentAttributeFilename, Message
 
 from .client import BotClient
 from .utils import LocalToken
+from .youtube import YouTubeRelayError, YouTubeStream
 
 __all__ = ["Http"]
 
@@ -64,6 +65,10 @@ class AsyncDebounce:
     def reschedule(self):
         return self._run()
 
+    def cancel(self):
+        if self._task is not None and self._task is not asyncio.current_task():
+            self._task.cancel()
+
 
 def parse_http_range(http_range: str) -> tuple[int | None, int | None]:
     matches = _RANGE_REGEX.fullmatch(http_range.strip())
@@ -82,6 +87,7 @@ class Http:
         self._extra_routes = list(extra_routes)
 
         self._tokens: typing.Dict[LocalToken, typing.Any] = {}
+        self._youtube_streams: dict[LocalToken, YouTubeStream] = {}
         self._downloaded_blocks: typing.Dict[LocalToken, typing.Set[int]] = {}
         self._stream_debounce: typing.Dict[LocalToken, AsyncDebounce] = {}
         self._stream_transports: typing.Dict[LocalToken, typing.Set[asyncio.Transport]] = {}
@@ -112,13 +118,27 @@ class Http:
         finally:
             await runner.cleanup()
 
-    def add_remote_token(self, playing_video) -> str:
+    def add_remote_token(self, playing_video, youtube_stream: YouTubeStream | None = None) -> str:
         local_token = playing_video.local_token
         uri = f"http://{self._listen_host}:{self._listen_port}/stream/{local_token.message_id}/{local_token.token}"
+        if youtube_stream is not None:
+            self.remove_remote_token(local_token)
+            self._youtube_streams[local_token] = youtube_stream
+            self._feed_timeout(local_token, None)
         self._tokens[local_token] = playing_video
         return uri
 
-    def _check_local_token(self, local_token: LocalToken) -> bool:
+    def remove_remote_token(self, local_token: LocalToken):
+        self._tokens.pop(local_token, None)
+        self._youtube_streams.pop(local_token, None)
+        self._downloaded_blocks.pop(local_token, None)
+        debounce = self._stream_debounce.pop(local_token, None)
+        if debounce is not None:
+            debounce.cancel()
+        for transport in self._stream_transports.pop(local_token, ()):
+            transport.close()
+
+    def has_remote_token(self, local_token: LocalToken) -> bool:
         return local_token in self._tokens
 
     @staticmethod
@@ -158,7 +178,7 @@ class Http:
         self._write_access_control_headers(result)
         return result
 
-    def _feed_timeout(self, local_token: LocalToken, size: int):
+    def _feed_timeout(self, local_token: LocalToken, size: int | None):
         debounce = self._stream_debounce.setdefault(
             local_token,
             AsyncDebounce(self._timeout_handler, self._request_gone_timeout),
@@ -177,34 +197,77 @@ class Http:
     def _get_stream_transports(self, local_token: LocalToken) -> typing.Set[asyncio.Transport]:
         return self._stream_transports[local_token] if local_token in self._stream_transports else set()
 
-    async def _timeout_handler(self, local_token: LocalToken, size: int):
-        _debounce: typing.Optional[AsyncDebounce] = None  # avoid garbage collector
-
-        if all(t.is_closing() for t in self._get_stream_transports(local_token)):
-            blocks = (size // self._block_size) + 1
-
-            if local_token in self._downloaded_blocks:
-                remain_blocks = blocks - len(self._downloaded_blocks[local_token])
-                del self._downloaded_blocks[local_token]
-            else:
-                remain_blocks = blocks
-
-            if local_token in self._tokens:
-                remain_blocks_perceptual = remain_blocks / blocks * 100
-                await self._tokens[local_token].close(remain_blocks_perceptual)
-                del self._tokens[local_token]
-
-            if local_token in self._stream_debounce:
-                _debounce = self._stream_debounce[local_token]
-                del self._stream_debounce[local_token]
-
-            if local_token in self._stream_transports:
-                del self._stream_transports[local_token]
-
-        if local_token in self._stream_debounce:
+    async def _timeout_handler(self, local_token: LocalToken, size: int | None):
+        if any(not transport.is_closing() for transport in self._get_stream_transports(local_token)):
             self._stream_debounce[local_token].reschedule()
+            return
 
-        del _debounce
+        remaining = None
+        if size is not None:
+            blocks = (size // self._block_size) + 1
+            remaining = (blocks - len(self._downloaded_blocks.get(local_token, ()))) / blocks * 100
+        playing_video = self._tokens.get(local_token)
+        self.remove_remote_token(local_token)
+        if playing_video is not None:
+            await playing_video.close(remaining)
+
+    async def _relay_youtube(self, request: Request, local_token: LocalToken, source: YouTubeStream) -> StreamResponse:
+        byte_range = request.headers.get("Range") if request.method == "GET" else None
+        if byte_range is not None:
+            try:
+                parse_http_range(byte_range)
+            except ValueError:
+                return Response(status=400)
+
+        self._feed_timeout(local_token, None)
+        stream = None
+        active = None
+        transport = request.transport
+        try:
+            async with source.open(request.method, byte_range) as upstream:
+                if self._youtube_streams.get(local_token) is not source:
+                    return Response(status=403)
+                if upstream.status == 416:
+                    headers = {}
+                    if "Content-Range" in upstream.headers:
+                        headers["Content-Range"] = upstream.headers["Content-Range"]
+                    return Response(status=416, headers=headers)
+                encoding = upstream.headers.get("Content-Encoding", "identity")
+                if upstream.status not in (200, 206) or encoding != "identity":
+                    logging.warning("YouTube media request returned HTTP %s", upstream.status)
+                    return Response(status=502)
+
+                headers = {
+                    name: upstream.headers[name]
+                    for name in ("Content-Length", "Content-Range", "Accept-Ranges")
+                    if name in upstream.headers
+                }
+                if request.method == "HEAD":
+                    response = Response(status=upstream.status, headers=headers)
+                    self._write_access_control_headers(response)
+                    return response
+
+                stream = StreamResponse(status=upstream.status, headers=headers)
+                self._write_access_control_headers(stream)
+                if transport is not None:
+                    active = self._stream_transports.setdefault(local_token, set())
+                    active.add(transport)
+                stream.force_close()
+                await stream.prepare(request)
+                async for chunk in upstream.content.iter_chunked(64 * 1024):
+                    await stream.write(chunk)
+                await stream.write_eof()
+                return stream
+        except (YouTubeRelayError, ClientError, OSError, TimeoutError, ValueError) as error:
+            logging.warning("YouTube media relay interrupted (%s)", type(error).__name__)
+            if stream is None:
+                return Response(status=502)
+            if transport is not None:
+                transport.close()
+            return stream
+        finally:
+            if active is not None:
+                active.discard(transport)
 
     async def _stream_handler(self, request: Request) -> Response | StreamResponse:
         message_id = request.match_info["message_id"]
@@ -220,8 +283,12 @@ class Http:
         if local_token.token >= 1 << 64:
             return Response(status=403)
 
-        if not self._check_local_token(local_token):
+        if not self.has_remote_token(local_token):
             return Response(status=403)
+
+        youtube_stream = self._youtube_streams.get(local_token)
+        if youtube_stream is not None:
+            return await self._relay_youtube(request, local_token, youtube_stream)
 
         try:
             message = await self._bot_client.get_message(local_token.message_id)
