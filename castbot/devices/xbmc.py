@@ -73,6 +73,9 @@ class XbmcDevice(Device):
     def get_device_name(self) -> str:
         return f"xbmc @{self._host}"
 
+    def get_device_key(self) -> str:
+        return self._http_url
+
     async def on_close(self, local_token: LocalToken):
         pass
 
