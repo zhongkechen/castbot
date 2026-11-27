@@ -45,7 +45,7 @@ def make_server():
     server = Http({"listen_host": "127.0.0.1", "listen_port": 8080, "block_size": 4}, client, [])
     server._tokens[LocalToken(1, 2)] = object()
     server._feed_timeout = lambda *_: None
-    server._feed_downloaded_blocks = lambda *_: None
+    server._feed_downloaded_range = lambda *_: None
     server._feed_stream_transport = lambda *_: None
     return server, client
 

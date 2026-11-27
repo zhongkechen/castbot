@@ -59,7 +59,7 @@ class SensitiveLogDataTest(unittest.IsolatedAsyncioTestCase):
         server = Http({"listen_port": 8080, "listen_host": "127.0.0.1", "block_size": 4}, bot_client, [])
         server._tokens[token] = object()
         server._feed_timeout = Mock()
-        server._feed_downloaded_blocks = Mock()
+        server._feed_downloaded_range = Mock()
         server._feed_stream_transport = Mock()
         request = SimpleNamespace(
             match_info={"message_id": "123", "token": str(token.token)},

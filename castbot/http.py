@@ -3,6 +3,7 @@ import logging
 import os.path
 import re
 import typing
+from bisect import bisect_left
 from urllib.parse import quote
 
 from aiohttp import ClientError, web
@@ -88,7 +89,7 @@ class Http:
 
         self._tokens: typing.Dict[LocalToken, typing.Any] = {}
         self._youtube_streams: dict[LocalToken, YouTubeStream] = {}
-        self._downloaded_blocks: typing.Dict[LocalToken, typing.Set[int]] = {}
+        self._downloaded_ranges: dict[LocalToken, list[tuple[int, int]]] = {}
         self._stream_debounce: typing.Dict[LocalToken, AsyncDebounce] = {}
         self._stream_transports: typing.Dict[LocalToken, typing.Set[asyncio.Transport]] = {}
         self._bot_client = bot_client
@@ -131,7 +132,7 @@ class Http:
     def remove_remote_token(self, local_token: LocalToken):
         self._tokens.pop(local_token, None)
         self._youtube_streams.pop(local_token, None)
-        self._downloaded_blocks.pop(local_token, None)
+        self._downloaded_ranges.pop(local_token, None)
         debounce = self._stream_debounce.pop(local_token, None)
         if debounce is not None:
             debounce.cancel()
@@ -190,9 +191,19 @@ class Http:
 
         debounce.update_args(local_token, size)
 
-    def _feed_downloaded_blocks(self, block_id: int, local_token: LocalToken):
-        downloaded_blocks = self._downloaded_blocks.setdefault(local_token, set())
-        downloaded_blocks.add(block_id)
+    def _feed_downloaded_range(self, local_token: LocalToken, start: int, stop: int):
+        if start >= stop:
+            return
+        ranges = self._downloaded_ranges.setdefault(local_token, [])
+        first = bisect_left(ranges, (start, 0))
+        if first and ranges[first - 1][1] >= start:
+            first -= 1
+        last = first
+        while last < len(ranges) and ranges[last][0] <= stop:
+            start = min(start, ranges[last][0])
+            stop = max(stop, ranges[last][1])
+            last += 1
+        ranges[first:last] = [(start, stop)]
 
     def _feed_stream_transport(self, local_token: LocalToken, transport: asyncio.Transport):
         transports = self._stream_transports.setdefault(local_token, set())
@@ -208,9 +219,8 @@ class Http:
 
         remaining = None
         if size is not None:
-            blocks = (size + self._block_size - 1) // self._block_size
-            downloaded = len(self._downloaded_blocks.get(local_token, ()))
-            remaining = max(0, blocks - downloaded) / blocks * 100 if blocks else 0
+            downloaded = sum(stop - start for start, stop in self._downloaded_ranges.get(local_token, ()))
+            remaining = max(0, size - downloaded) / size * 100 if size else 0
         playing_video = self._tokens.get(local_token)
         self.remove_remote_token(local_token)
         if playing_video is not None:
@@ -358,7 +368,8 @@ class Http:
                 if not block:
                     break
                 new_offset = offset + len(block)
-                block = block[max(start - offset, 0):stop - offset]
+                write_start = max(start, offset)
+                block = block[write_start - offset:stop - offset]
 
                 if request.transport is None:
                     break
@@ -369,7 +380,7 @@ class Http:
                     break
 
                 await stream.write(block)
-                self._feed_downloaded_blocks(offset, local_token)
+                self._feed_downloaded_range(local_token, write_start, write_start + len(block))
                 offset = new_offset
 
             await stream.write_eof()

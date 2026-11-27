@@ -1,6 +1,6 @@
-# Calculate remaining download blocks without an extra block
+# Calculate remaining media bytes from the ranges served
 
-Cleanup counts a trailing block only when the media has remaining bytes beyond the last block boundary. Complete and empty files report zero remaining. Partial transfers count each downloaded block once.
+Cleanup counts only the unique media bytes written to the player. Overlapping and repeated requests count each byte once. Complete and empty files report zero remaining.
 
 Run the regression tests from the repository root after installing the locked dependencies.
 
