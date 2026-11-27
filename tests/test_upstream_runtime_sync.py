@@ -83,7 +83,7 @@ class UpstreamRuntimeSyncTest(unittest.IsolatedAsyncioTestCase):
         )
         server._tokens[LocalToken(1, 2)] = object()
         server._feed_timeout = lambda *_args: None
-        server._feed_downloaded_blocks = lambda *_args: None
+        server._feed_downloaded_range = lambda *_args: None
         server._feed_stream_transport = lambda *_args: None
         request = SimpleNamespace(
             match_info={"message_id": "1", "token": "2"},

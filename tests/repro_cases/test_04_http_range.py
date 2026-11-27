@@ -48,7 +48,6 @@ def make_server():
     server = Http({"listen_host": "127.0.0.1", "listen_port": 8080, "block_size": 4}, client, [])
     server._tokens[LocalToken(1, 2)] = object()
     server._feed_timeout = lambda *_: None
-    server._feed_downloaded_blocks = lambda *_: None
     server._feed_stream_transport = lambda *_: None
     return server, client
 
@@ -80,6 +79,8 @@ class HttpRangeTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(response.headers["Content-Range"], content_range)
                 self.assertEqual(response.headers["Content-Length"], str(len(body)))
                 self.assertEqual(response.headers["Connection"], "close")
+                start = int(content_range.split()[1].split("-")[0])
+                self.assertEqual(server._downloaded_ranges[LocalToken(1, 2)], [(start, start + len(body))])
 
     async def test_unsatisfiable_ranges_include_the_full_size(self):
         for header in ("bytes=8-", "bytes=4-2", "bytes=-0"):
