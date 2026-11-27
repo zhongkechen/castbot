@@ -156,6 +156,11 @@ class PlayingVideos:
             device = await self._device_finders.find_device_by_name(device_name) if device_name else None
             device = device or self.get_user_device(user_id)
 
+        # Another callback may have restored this controller while we awaited Telegram or discovery.
+        existing = self._playing_videos.get(local_token)
+        if existing is not None:
+            return existing
+
         video = self.new_video(local_token, user_id, video_message,
                                link_message=link_message, control_message=control_message,
                                youtube_id=youtube_id, playlist_id=playlist_id)
