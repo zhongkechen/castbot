@@ -7,7 +7,7 @@ import uuid
 import aiohttp
 
 from ..utils import DeviceControlError, LocalToken
-from ..device import Device, DeviceFinder
+from ..device import Device, DeviceFinder, PlaybackStatus
 
 __all__ = ["Finder"]
 
@@ -113,6 +113,25 @@ class XbmcDevice(Device):
         await self._call("Playlist.Clear", playlistid=0)
         await self._call("Playlist.Add", playlistid=0, item={"file": url})
         await self._call("Player.Open", item={"playlistid": 0}, options={"repeat": "one"})
+
+    async def play_playlist_item(self, url: str, title: str, local_token: LocalToken):
+        await self._call("Player.Open", item={"file": url}, options={"repeat": "off"})
+
+    async def playlist_status(self, url: str) -> PlaybackStatus:
+        players = await self._call("Player.GetActivePlayers")
+        if not players:
+            return PlaybackStatus.IDLE
+        for player in players:
+            if player["type"] == "video":
+                try:
+                    item = await self._call("Player.GetItem", playerid=player["playerid"], properties=["file"])
+                except DeviceControlError:
+                    # The player can disappear between the two requests.
+                    if not await self._call("Player.GetActivePlayers"):
+                        return PlaybackStatus.IDLE
+                    raise
+                return PlaybackStatus.ACTIVE if item["item"].get("file") == url else PlaybackStatus.INTERRUPTED
+        return PlaybackStatus.INTERRUPTED
 
 
 class XbmcDeviceFinder(DeviceFinder):

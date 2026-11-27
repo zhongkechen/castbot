@@ -1,9 +1,10 @@
 import asyncio
 import logging
+import re
 import typing
 
 from ..utils import DeviceControlError, LocalToken
-from ..device import DeviceFinder, Device
+from ..device import DeviceFinder, Device, PlaybackStatus
 
 __all__ = ["Finder"]
 
@@ -14,6 +15,8 @@ _AUTH_MAGIC = b"\xff\xfb\x01"
 _AUTH_OK = b"\xff\xfc\x01\r\nWelcome"
 _AUTH_PROMPT = b"Password: " + _AUTH_MAGIC
 _HANDSHAKE_TIMEOUT = 5
+_STATUS_LINE = re.compile(r"\( state (\w+) \)")
+_INPUT_LINE = re.compile(r"\( new input: (.*) \)")
 
 
 async def _read_prefix(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, expected: bytes) -> bytes:
@@ -29,6 +32,18 @@ async def _read_prefix(reader: asyncio.StreamReader, writer: asyncio.StreamWrite
         writer.close()
         raise
     return bytes(reply)
+
+
+async def _read_status(reader: asyncio.StreamReader) -> tuple[str, str | None]:
+    url = None
+    async with asyncio.timeout(_HANDSHAKE_TIMEOUT):
+        while line := await reader.readline():
+            text = line.decode(_ENCODING, errors="replace")
+            if item := _INPUT_LINE.search(text):
+                url = item[1]
+            if status := _STATUS_LINE.search(text):
+                return status[1], url
+    raise DeviceControlError("VLC did not report playback status")
 
 
 class VlcDeviceParams:
@@ -68,7 +83,7 @@ class VlcDevice(Device):
     def get_device_key(self) -> str:
         return f"{self._params.host}:{self._params.port}"
 
-    async def _call(self, method: str, *args: str):
+    async def _call(self, method: str, *args: str, read_status: bool = False):
         reader, writer = await asyncio.open_connection(self._params.host, self._params.port)
         headers = await _read_prefix(reader, writer, _AUTH_PROMPT)
 
@@ -89,10 +104,12 @@ class VlcDevice(Device):
                 writer.close()
                 raise DeviceControlError("VLC requires a password")
 
-        writer.write(method.encode(_ENCODING) + b" " + b" ".join(a.encode(_ENCODING) for a in args) + _EOF)
-
-        await writer.drain()
-        return writer.close()
+        try:
+            writer.write(method.encode(_ENCODING) + b" " + b" ".join(a.encode(_ENCODING) for a in args) + _EOF)
+            await writer.drain()
+            return await _read_status(reader) if read_status else None
+        finally:
+            writer.close()
 
     async def stop(self):
         await self._call("stop")
@@ -103,6 +120,22 @@ class VlcDevice(Device):
     async def play(self, url: str, title: str, local_token: LocalToken):
         await self._call("add", url)
         await self._call("play")
+
+    async def play_playlist_item(self, url: str, title: str, local_token: LocalToken):
+        await self._call("clear")
+        await self._call("repeat", "off")
+        await self._call("loop", "off")
+        await self.play(url, title, local_token)
+
+    async def playlist_status(self, url: str) -> PlaybackStatus:
+        state, current_url = await self._call("status", read_status=True)
+        if current_url and current_url != url:
+            return PlaybackStatus.INTERRUPTED
+        if state in {"playing", "paused"}:
+            return PlaybackStatus.ACTIVE
+        if state == "stopped":
+            return PlaybackStatus.IDLE
+        return PlaybackStatus.BUFFERING
 
 
 class VlcDeviceFinder(DeviceFinder):

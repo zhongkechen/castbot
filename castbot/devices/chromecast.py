@@ -6,7 +6,7 @@ import typing
 import catt.api
 
 from ..utils import LocalToken
-from ..device import Device, DeviceFinder
+from ..device import Device, DeviceFinder, PlaybackStatus
 
 __all__ = ["Finder"]
 
@@ -38,6 +38,17 @@ class ChromecastDevice(Device):
 
     async def play(self, url: str, title: str, local_token: LocalToken):
         await run_method_in_executor(self._device.play_url, url, title=title)
+
+    async def playlist_status(self, url: str) -> PlaybackStatus:
+        status = self._device.controller.info
+        if status.get("content_id") != url:
+            return PlaybackStatus.INTERRUPTED
+        state = status.get("player_state")
+        if state in {"PLAYING", "PAUSED"}:
+            return PlaybackStatus.ACTIVE
+        if state == "IDLE":
+            return PlaybackStatus.FINISHED if status.get("idle_reason") == "FINISHED" else PlaybackStatus.INTERRUPTED
+        return PlaybackStatus.BUFFERING
 
     async def resume(self):
         await run_method_in_executor(self._device.play)

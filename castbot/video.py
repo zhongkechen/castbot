@@ -13,9 +13,10 @@ from .button import DeviceSelectButton, PlayButton, StopButton, PauseButton, Res
 from .client import BotClient
 from .device import Device, DeviceFinderCollection
 from .downloader import extract_url
+from .playlist import PlaylistPlayback
 from .utils import LocalToken, NoDeviceException, ActionNotSupportedException
 from .http import Http
-from .youtube import YouTubeStream, resolve_youtube_stream, youtube_video_id
+from .youtube import YouTubeStream, resolve_youtube_stream, youtube_playlist_id, youtube_video_id
 
 
 class UserData:
@@ -32,6 +33,7 @@ class PlayingVideos:
         self._bot_client = bot_client
         self._playing_videos: typing.Dict[LocalToken, PlayingVideo] = {}
         self._user_data: typing.Dict[int, UserData] = {}
+        self._playlists: dict[str, tuple[PlayingVideo, PlaylistPlayback]] = {}
 
     async def on_new_video(self, _: Client | None, video_message: Message, link_message=None):
         user_id = (link_message or video_message).from_user.id
@@ -42,9 +44,10 @@ class PlayingVideos:
                                control_message=None)
         await video.send_stopped_control_message()
 
-    async def on_new_youtube(self, message: Message, video_id: str, control_message=None):
+    async def on_new_youtube(self, message: Message, video_id: str | None, control_message=None, *, playlist_id=None):
         video = self.new_video(
-            LocalToken(message.id), message.from_user.id, message, control_message=control_message, youtube_id=video_id,
+            LocalToken(message.id), message.from_user.id, message, control_message=control_message,
+            youtube_id=video_id, playlist_id=playlist_id,
         )
         await video.send_stopped_control_message()
 
@@ -54,7 +57,7 @@ class PlayingVideos:
             del self._playing_videos[local_token]
 
     def new_video(self, local_token: LocalToken, user_id, video_message,
-                  link_message=None, control_message=None, device=None, youtube_id=None):
+                  link_message=None, control_message=None, device=None, youtube_id=None, playlist_id=None):
         device = device or self.get_user_device(user_id)
         self._playing_videos[local_token] = PlayingVideo(
             local_token=local_token,
@@ -65,6 +68,7 @@ class PlayingVideos:
             link_message=link_message,
             control_message=control_message,
             youtube_id=youtube_id,
+            playlist_id=playlist_id,
         )
         return self._playing_videos[local_token]
 
@@ -78,6 +82,44 @@ class PlayingVideos:
     def remove_from_http(self, local_token: LocalToken):
         self._http.remove_remote_token(local_token)
 
+    def has_active_playlist(self, device: Device) -> bool:
+        return bool(self._playlists) and device.get_device_id() in self._playlists
+
+    async def interrupt_playlist(self, device: Device, owner=None) -> bool:
+        if not self._playlists:
+            return False
+        device_id = device.get_device_id()
+        interrupted = False
+        while entry := self._playlists.get(device_id):
+            video, playlist = entry
+            if owner is not None and video is not owner:
+                break
+            await playlist.stop()
+            if self._playlists.get(device_id) is entry:
+                del self._playlists[device_id]
+            interrupted = True
+        return interrupted
+
+    async def play_playlist(self, video: "PlayingVideo", device: Device, playlist_id: str):
+        await self.interrupt_playlist(device)
+        device_id = device.get_device_id()
+
+        async def finished(started, notice):
+            try:
+                if started:
+                    await video.finish_playlist(notice)
+            finally:
+                if self._playlists.get(device_id) is entry:
+                    del self._playlists[device_id]
+
+        entry = (
+            video,
+            PlaylistPlayback(playlist_id, video.local_token.message_id, device, self._http,
+                             video.show_playlist_item, finished),
+        )
+        self._playlists[device_id] = entry
+        await entry[1].start()
+
     async def reconstruct_playing_video(self, local_token: LocalToken, user_id, control_message,
                                         *, device_id=None):
         if local_token in self._playing_videos:
@@ -85,9 +127,12 @@ class PlayingVideos:
         # re-construct PlayVideo when the bot is restarted
         video_message: Message = await self._bot_client.get_message(local_token.message_id)
         youtube_id = None
+        playlist_id = None
         if not isinstance(getattr(video_message, "media", None), MessageMediaDocument):
             link = extract_url(getattr(video_message, "message", None))
-            youtube_id = youtube_video_id(link) if link else None
+            if link:
+                youtube_id = youtube_video_id(link)
+                playlist_id = youtube_playlist_id(link)
         if control_message.reply_to_message_id and control_message.reply_to_message_id != local_token.message_id:
             link_message = await self._bot_client.get_message(control_message.reply_to_message_id)
         else:
@@ -101,7 +146,8 @@ class PlayingVideos:
             device = device or self.get_user_device(user_id)
 
         video = self.new_video(local_token, user_id, video_message,
-                               link_message=link_message, control_message=control_message, youtube_id=youtube_id)
+                               link_message=link_message, control_message=control_message,
+                               youtube_id=youtube_id, playlist_id=playlist_id)
         video.playing_device = device
         return video
 
@@ -137,6 +183,7 @@ class PlayingVideo:
         link_message: typing.Optional[Message] = None,
         control_message: typing.Optional[Message] = None,
         youtube_id: str | None = None,
+        playlist_id: str | None = None,
     ):
         self.local_token = local_token
         self.user_id = user_id
@@ -146,6 +193,8 @@ class PlayingVideo:
         self.control_message = control_message
         self.playing_videos = playing_videos
         self.youtube_id = youtube_id
+        self.playlist_id = playlist_id
+        self._playlist_index = None
         self._playback_lock = asyncio.Lock()
 
     def _gen_device_str(self):
@@ -164,11 +213,15 @@ class PlayingVideo:
         return name
 
     def _gen_message_str(self):
+        if self.playlist_id:
+            if self._playlist_index is not None:
+                return f"for YouTube playlist, item {self._playlist_index}"
+            return "for YouTube playlist"
         if self.youtube_id:
             return f"for YouTube video <code>{self.youtube_id}</code>"
         return f"for file <code>{self.video_message.id}</code>"
 
-    async def send_stopped_control_message(self, remaining=None):
+    async def send_stopped_control_message(self, remaining=None, notice=None):
         buttons = [
             [DeviceButton(self).get_button()],
             [PlayButton(self).get_button()],
@@ -177,6 +230,8 @@ class PlayingVideo:
             text = f"Controller {self._gen_message_str()} {self._gen_device_str()}"
         else:
             text = f"Streaming closed {self._gen_message_str()} {self._gen_device_str()}, {remaining:0.2f}% remains"
+        if notice:
+            text = f"{text}\n{html.escape(notice)}"
         await self.create_or_update_control_message(text, buttons)
 
     async def send_playing_control_message(self):
@@ -216,11 +271,22 @@ class PlayingVideo:
         async with self._playback_lock:
             if not self.playing_device:
                 raise NoDeviceException
+            if self.playlist_id:
+                await self.playing_videos.play_playlist(self, self.playing_device, self.playlist_id)
+                return
             if self.youtube_id:
                 await self._play_youtube()
             else:
                 await self._play_telegram_video()
             await self.send_playing_control_message()
+
+    async def show_playlist_item(self, index: int):
+        self._playlist_index = index
+        await self.send_playing_control_message()
+
+    async def finish_playlist(self, notice: str | None):
+        self._playlist_index = None
+        await self.send_stopped_control_message(notice=notice)
 
     async def _play_telegram_video(self):
         try:
@@ -228,6 +294,7 @@ class PlayingVideo:
         except TypeError:
             filename = "None"
 
+        await self.playing_videos.interrupt_playlist(self.playing_device)
         await self.playing_device.stop()
         uri = self.playing_videos.add_to_http(self)
         await self.playing_device.play(uri, str(filename), self.local_token)
@@ -235,6 +302,7 @@ class PlayingVideo:
     async def _play_youtube(self):
         device = self.playing_device
         upstream = await resolve_youtube_stream(self.youtube_id)
+        await self.playing_videos.interrupt_playlist(device)
         await device.stop()
         uri = self.playing_videos.add_to_http(self, upstream)
         try:
@@ -245,11 +313,19 @@ class PlayingVideo:
 
     async def stop(self):
         async with self._playback_lock:
+            if self.playlist_id and self.playing_device:
+                if await self.playing_videos.interrupt_playlist(self.playing_device, owner=self):
+                    await self.playing_device.stop()
+                else:
+                    await self.finish_playlist(None)
+                return
             if self.youtube_id:
                 self.playing_videos.remove_from_http(self.local_token)
             if self.playing_device:
                 # noinspection PyBroadException
                 try:
+                    if self.playing_videos:
+                        await self.playing_videos.interrupt_playlist(self.playing_device)
                     await self.playing_device.stop()
                 except Exception:
                     # make sure stop always succeeds even if the device is gone
@@ -280,7 +356,8 @@ class PlayingVideo:
                 return
             try:
                 await self.send_stopped_control_message(remaining=remains)
-                await self.playing_device.on_close(self.local_token)
+                if not self.playing_videos.has_active_playlist(self.playing_device):
+                    await self.playing_device.on_close(self.local_token)
             finally:
                 self.playing_videos.remove(self)
 

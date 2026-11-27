@@ -20,7 +20,7 @@ from async_upnp_client.exceptions import UpnpError
 from async_upnp_client.search import async_search
 
 from ..utils import LocalToken
-from ..device import Device, DeviceFinder, RoutersDefType, RequestHandler
+from ..device import Device, DeviceFinder, PlaybackStatus, RoutersDefType, RequestHandler
 
 __all__ = ["Finder"]
 
@@ -277,6 +277,23 @@ class UpnpDevice(Device):
     async def pause(self):
         play = self._service.action("Pause")
         await play.async_call(InstanceID=0)
+
+    async def playlist_status(self, url: str) -> PlaybackStatus:
+        info = await self._service.action("GetTransportInfo").async_call(InstanceID=0)
+        if info.get("CurrentTransportStatus") == "ERROR_OCCURRED":
+            return PlaybackStatus.INTERRUPTED
+        state = info.get("CurrentTransportState")
+        if state in {"PLAYING", "PAUSED_PLAYBACK"}:
+            position = await self._service.action("GetPositionInfo").async_call(InstanceID=0)
+            if position.get("TrackURI") not in {None, "", "NOT_IMPLEMENTED", url}:
+                return PlaybackStatus.INTERRUPTED
+            return PlaybackStatus.ACTIVE
+        if state in {"STOPPED", "NO_MEDIA_PRESENT"}:
+            return PlaybackStatus.IDLE
+        return PlaybackStatus.BUFFERING
+
+    async def close_playlist_item(self, local_token: LocalToken):
+        await self.on_close(local_token)
 
     async def reconnect(self):
         play = self._service.action("Play")

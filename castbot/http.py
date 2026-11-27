@@ -141,6 +141,10 @@ class Http:
     def has_remote_token(self, local_token: LocalToken) -> bool:
         return local_token in self._tokens
 
+    def keep_youtube_stream(self, local_token: LocalToken):
+        if local_token in self._youtube_streams:
+            self._feed_timeout(local_token, None)
+
     @staticmethod
     def _write_http_range_headers(
         result: StreamResponse, start: int, stop: int, size: int, partial: bool
