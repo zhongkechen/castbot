@@ -78,12 +78,16 @@ class YouTubeRelayTest(unittest.IsolatedAsyncioTestCase):
         )
         self.device = SimpleNamespace(
             get_device_name=lambda: "Example TV", stop=AsyncMock(), play=AsyncMock(), on_close=AsyncMock(),
+            get_device_id=lambda: "4b19f2dd42a319df7c20",
         )
-        finders = SimpleNamespace(find_device_by_name=AsyncMock(return_value=self.device))
-        self.videos = PlayingVideos(self.http, finders, self.bot)
+        self.finders = SimpleNamespace(
+            find_device_by_name=AsyncMock(return_value=self.device),
+            find_device_by_id=AsyncMock(return_value=self.device),
+        )
+        self.videos = PlayingVideos(self.http, self.finders, self.bot)
         self.videos.set_user_device(self.message.from_user.id, self.device)
         self.downloader = Downloader({}, self.videos)
-        self.buttons = Buttons(self.videos, finders, self.downloader)
+        self.buttons = Buttons(self.videos, self.finders, self.downloader)
 
     async def upstream_media(self, request):
         byte_range = request.headers.get("Range")
@@ -179,10 +183,11 @@ class YouTubeRelayTest(unittest.IsolatedAsyncioTestCase):
         video = next(iter(self.videos._playing_videos.values()))
         self.videos.remove(video)
         self.bot.get_message.return_value = SimpleNamespace(id=self.message.id, media=None, message=WATCH_URL)
-        self.control.text = "Controller on device Example TV"
         self.control.reply_to_message_id = self.message.id
-        restored = await self.videos.reconstruct_playing_video(
-            video.local_token, self.message.from_user.id, self.control,
+        play = self.message.reply.call_args.kwargs["reply_markup"].inline_keyboard[1][0]
+        button = await self.buttons.create_button_from_callback(
+            SimpleNamespace(data=play.callback_data, from_user=self.message.from_user, message=self.control),
         )
-        self.assertEqual(restored.youtube_id, VIDEO_ID)
-        self.assertIs(restored.playing_device, self.device)
+        self.assertEqual(button.playing_video.youtube_id, VIDEO_ID)
+        self.assertIs(button.playing_video.playing_device, self.device)
+        self.finders.find_device_by_id.assert_awaited_once_with(self.device.get_device_id())

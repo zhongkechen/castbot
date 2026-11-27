@@ -32,10 +32,10 @@ Create a configuration file `config.toml` and then run the following command
 
 ```bash
 pip install castbot
-castbot -c config.toml -v 1
+castbot -c config.toml -v
 ```
 
-Note: Make sure you have a version of Python 3.8+
+Note: Make sure you have a version of Python 3.11+
 
 ## How to run castbot with Docker
 

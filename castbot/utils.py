@@ -5,6 +5,7 @@ __all__ = [
     "secret_token",
     "ConfigError",
     "NoDeviceException",
+    "DeviceControlError",
     "ActionNotSupportedException",
     "UnknownCallbackException",
     "LocalToken"
@@ -33,6 +34,10 @@ class LocalToken:
 
 def secret_token(nbytes: int = 8) -> int:
     return int.from_bytes(secrets.token_bytes(nbytes=nbytes))
+
+
+class DeviceControlError(Exception):
+    pass
 
 
 class NoDeviceException(Exception):

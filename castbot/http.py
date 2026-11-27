@@ -204,8 +204,9 @@ class Http:
 
         remaining = None
         if size is not None:
-            blocks = (size // self._block_size) + 1
-            remaining = (blocks - len(self._downloaded_blocks.get(local_token, ()))) / blocks * 100
+            blocks = (size + self._block_size - 1) // self._block_size
+            downloaded = len(self._downloaded_blocks.get(local_token, ()))
+            remaining = max(0, blocks - downloaded) / blocks * 100 if blocks else 0
         playing_video = self._tokens.get(local_token)
         self.remove_remote_token(local_token)
         if playing_video is not None:
