@@ -2,7 +2,7 @@ import asyncio
 import logging
 import typing
 
-from ..utils import LocalToken
+from ..utils import DeviceControlError, LocalToken
 from ..device import DeviceFinder, Device
 
 __all__ = ["Finder"]
@@ -80,12 +80,14 @@ class VlcDevice(Device):
                 auth_result = await _read_prefix(reader, writer, _AUTH_OK)
 
                 if not auth_result.startswith(_AUTH_OK):
-                    _LOGGER.error("receive: %s", auth_result.decode(_ENCODING, "ignore"))
-                    return writer.close()
+                    _LOGGER.error("VLC rejected authentication")
+                    writer.close()
+                    raise DeviceControlError("VLC rejected authentication")
 
             else:
                 _LOGGER.error("vlc %s: need password", self._params.host)
-                return writer.close()
+                writer.close()
+                raise DeviceControlError("VLC requires a password")
 
         writer.write(method.encode(_ENCODING) + b" " + b" ".join(a.encode(_ENCODING) for a in args) + _EOF)
 

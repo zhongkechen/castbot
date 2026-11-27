@@ -189,14 +189,13 @@ class PlayingVideo:
         if not self.playing_device:
             raise NoDeviceException
 
-        uri = self.playing_videos.add_to_http(self)
-
         try:
             filename = self.pyrogram_filename(self.video_message)
         except TypeError:
             filename = "None"
 
         await self.playing_device.stop()
+        uri = self.playing_videos.add_to_http(self)
         await self.playing_device.play(uri, str(filename), self.local_token)
         await self.send_playing_control_message()
 

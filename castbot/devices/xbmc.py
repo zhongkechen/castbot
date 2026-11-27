@@ -1,19 +1,16 @@
 # from: https://github.com/home-assistant/core/blob/dev/homeassistant/components/kodi/media_player.py
 
-import asyncio
 import json
-import logging
 import typing
 import uuid
 
 import aiohttp
 
-from ..utils import LocalToken
+from ..utils import DeviceControlError, LocalToken
 from ..device import Device, DeviceFinder
 
 __all__ = ["Finder"]
 
-_LOGGER = logging.getLogger(__name__)
 ArgType = typing.Union[str, bytes, int, bool]
 
 _JSON_HEADERS = {"content-type": "application/json"}
@@ -88,26 +85,17 @@ class XbmcDevice(Device):
         try:
             response = await session.post(self._http_url, data=json.dumps(data))
 
-            if response.status == 401:
-                _LOGGER.error("Error fetching Kodi data. HTTP %d Unauthorized. Password is incorrect.", response.status)
-                return None
-
             if response.status != 200:
-                _LOGGER.error("Error fetching Kodi data. HTTP %d", response.status)
-                return None
+                raise DeviceControlError(f"Kodi returned HTTP {response.status}")
 
             response_json = await response.json()
-
-            if "error" in response_json:
-                _LOGGER.error(
-                    "RPC Error Code %d: %s", response_json["error"]["code"], response_json["error"]["message"]
-                )
-                return None
+            if not isinstance(response_json, dict) or "error" in response_json or "result" not in response_json:
+                raise DeviceControlError("Kodi returned a JSON-RPC error")
 
             return response_json["result"]
 
-        except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionRefusedError):
-            return None
+        except (aiohttp.ClientError, OSError, ValueError):
+            raise DeviceControlError("Kodi request failed") from None
 
         finally:
             if response:
