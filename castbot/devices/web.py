@@ -53,7 +53,8 @@ class WebDevice(Device):
 
     def report_playback(self, url: str, event: str):
         if url == self._playback_url:
-            self._playback_event = event
+            if self._playback_event not in {"ended", "error"}:
+                self._playback_event = event
 
     async def playlist_status(self, url: str) -> PlaybackStatus:
         if url != self._playback_url or self._playback_event == "error":
@@ -64,7 +65,9 @@ class WebDevice(Device):
             return PlaybackStatus.BUFFERING
         if time.monotonic() - self._last_poll > 90:
             return PlaybackStatus.INTERRUPTED
-        return PlaybackStatus.ACTIVE
+        if self._playback_event == "playing":
+            return PlaybackStatus.ACTIVE
+        return PlaybackStatus.BUFFERING
 
     def manipulate_timestamp(self) -> float:
         old = self._manipulation_timestamp
@@ -152,7 +155,7 @@ class WebDeviceApiRequestPlaybackEvent(RequestHandler):
         self._devices = devices
 
     def get_path(self) -> str:
-        return "/web/api/playback/{remote_token}/{event:ended|error}"
+        return "/web/api/playback/{remote_token}/{event:playing|ended|error}"
 
     def get_method(self) -> str:
         return "POST"
