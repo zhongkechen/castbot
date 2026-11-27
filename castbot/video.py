@@ -10,13 +10,18 @@ from pyrogram.raw.types import MessageMediaDocument
 from pyrogram.types import Message, InlineKeyboardMarkup
 
 from .button import DeviceSelectButton, PlayButton, StopButton, PauseButton, ResumeButton, RefreshButton, DeviceButton
+from .button import StreamButton
 from .client import BotClient
 from .device import Device, DeviceFinderCollection
 from .downloader import extract_url
 from .playlist import PlaylistPlayback
 from .utils import LocalToken, NoDeviceException, ActionNotSupportedException
 from .http import Http
-from .youtube import YouTubeStream, resolve_youtube_stream, youtube_playlist_id, youtube_video_id
+from .youtube import AUTO_STREAM, PLAYLIST_STREAM_OPTIONS, StreamOption, YouTubeRelayError, YouTubeStream
+from .youtube import list_youtube_streams, resolve_youtube_stream, youtube_playlist_id, youtube_video_id
+
+
+_STREAM_LINE = "\nStream: "
 
 
 class UserData:
@@ -85,6 +90,12 @@ class PlayingVideos:
     def has_active_playlist(self, device: Device) -> bool:
         return bool(self._playlists) and device.get_device_id() in self._playlists
 
+    def is_playing(self, video: "PlayingVideo") -> bool:
+        if video.playlist_id and video.playing_device:
+            current = self._playlists.get(video.playing_device.get_device_id())
+            return current is not None and current[0] is video
+        return self.is_streaming(video.local_token)
+
     async def interrupt_playlist(self, device: Device, owner=None) -> bool:
         if not self._playlists:
             return False
@@ -100,7 +111,7 @@ class PlayingVideos:
             interrupted = True
         return interrupted
 
-    async def play_playlist(self, video: "PlayingVideo", device: Device, playlist_id: str):
+    async def play_playlist(self, video: "PlayingVideo", device: Device, playlist_id: str, max_height: int | None):
         await self.interrupt_playlist(device)
         device_id = device.get_device_id()
 
@@ -115,7 +126,7 @@ class PlayingVideos:
         entry = (
             video,
             PlaylistPlayback(playlist_id, video.local_token.message_id, device, self._http,
-                             video.show_playlist_item, finished),
+                             video.show_playlist_item, finished, max_height=max_height),
         )
         self._playlists[device_id] = entry
         await entry[1].start()
@@ -149,6 +160,7 @@ class PlayingVideos:
                                link_message=link_message, control_message=control_message,
                                youtube_id=youtube_id, playlist_id=playlist_id)
         video.playing_device = device
+        video.restore_stream_choice(getattr(control_message, "text", None))
         return video
 
     async def handle_closed(self, remains: float, local_token: LocalToken):
@@ -196,6 +208,61 @@ class PlayingVideo:
         self.playlist_id = playlist_id
         self._playlist_index = None
         self._playback_lock = asyncio.Lock()
+        self._stream_choice = AUTO_STREAM
+        self._stream_options: list[StreamOption] | None = None
+
+    @property
+    def is_youtube(self) -> bool:
+        return bool(self.youtube_id or self.playlist_id)
+
+    def restore_stream_choice(self, text: str | None):
+        _, _, label = (text or "").rpartition(_STREAM_LINE)
+        if self.playlist_id:
+            self._stream_choice = next((option for option in PLAYLIST_STREAM_OPTIONS if option.label == label),
+                                       AUTO_STREAM)
+        elif self.youtube_id:
+            format_id = re.search(r"\(#([A-Za-z0-9_-]{1,20})\)$", label)
+            if format_id:
+                self._stream_choice = StreamOption(format_id[1], label)
+
+    async def _get_stream_options(self):
+        if self.playlist_id:
+            return [AUTO_STREAM, *PLAYLIST_STREAM_OPTIONS]
+        if self._stream_options is None:
+            self._stream_options = await list_youtube_streams(self.youtube_id)
+        return [AUTO_STREAM, *self._stream_options]
+
+    async def _show_stream_menu(self):
+        self._stream_options = None
+        options = await self._get_stream_options()
+        buttons = [
+            [StreamButton(self, "✓ " + option.label if option.value == self._stream_choice.value else option.label,
+                          action="pick" + option.value).get_button()]
+            for option in options
+        ]
+        buttons.append([StreamButton(self, "BACK", action="back").get_button()])
+        prompt = "Choose a maximum resolution" if self.playlist_id else "Choose a YouTube stream"
+        await self.create_or_update_control_message(f"{prompt} {self._gen_device_str()}", buttons)
+
+    async def handle_stream_selection(self, action: str):
+        async with self._playback_lock:
+            if self.playing_videos.is_playing(self):
+                return
+            notice = None
+            try:
+                if action == "menu":
+                    await self._show_stream_menu()
+                    return
+                if action.startswith("pick"):
+                    value = action.removeprefix("pick")
+                    options = await self._get_stream_options() if value else [AUTO_STREAM]
+                    choice = next((option for option in options if option.value == value), None)
+                    if choice is None:
+                        raise YouTubeRelayError("This YouTube stream is unavailable. Use STREAM to pick another.")
+                    self._stream_choice = choice
+            except YouTubeRelayError as error:
+                notice = str(error)
+            await self.send_stopped_control_message(notice=notice)
 
     def _gen_device_str(self):
         return (
@@ -205,7 +272,8 @@ class PlayingVideo:
 
     @classmethod
     def parse_device_str(cls, text):
-        _, separator, name = (text or "").partition(" on device ")
+        controller, _, _ = (text or "").rpartition(_STREAM_LINE)
+        _, separator, name = (controller or text or "").partition(" on device ")
         if not separator:
             return None
         if text.startswith("Streaming closed "):
@@ -226,6 +294,8 @@ class PlayingVideo:
             [DeviceButton(self).get_button()],
             [PlayButton(self).get_button()],
         ]
+        if self.is_youtube:
+            buttons.append([StreamButton(self).get_button()])
         if not remaining:
             text = f"Controller {self._gen_message_str()} {self._gen_device_str()}"
         else:
@@ -259,6 +329,8 @@ class PlayingVideo:
         await self.create_or_update_control_message("Select a device", device_buttons + refresh_button)
 
     async def create_or_update_control_message(self, text, buttons):
+        if self.is_youtube:
+            text += _STREAM_LINE + html.escape(self._stream_choice.label)
         if self.control_message:
             try:
                 await self.control_message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
@@ -272,7 +344,8 @@ class PlayingVideo:
             if not self.playing_device:
                 raise NoDeviceException
             if self.playlist_id:
-                await self.playing_videos.play_playlist(self, self.playing_device, self.playlist_id)
+                max_height = int(self._stream_choice.value) if self._stream_choice.value else None
+                await self.playing_videos.play_playlist(self, self.playing_device, self.playlist_id, max_height)
                 return
             if self.youtube_id:
                 await self._play_youtube()
@@ -301,7 +374,10 @@ class PlayingVideo:
 
     async def _play_youtube(self):
         device = self.playing_device
-        upstream = await resolve_youtube_stream(self.youtube_id)
+        if self._stream_choice.value:
+            upstream = await resolve_youtube_stream(self.youtube_id, format_id=self._stream_choice.value)
+        else:
+            upstream = await resolve_youtube_stream(self.youtube_id)
         await self.playing_videos.interrupt_playlist(device)
         await device.stop()
         uri = self.playing_videos.add_to_http(self, upstream)

@@ -146,7 +146,7 @@ class YouTubePlaylistTest(unittest.IsolatedAsyncioTestCase):
         finally:
             self._entries_closed.set()
 
-    async def resolve_item(self, video_id):
+    async def resolve_item(self, video_id, **_kwargs):
         return YouTubeStream(self.upstream.make_url(f"/{video_id}"), video_id, {})
 
     async def click(self, button):
@@ -155,7 +155,8 @@ class YouTubePlaylistTest(unittest.IsolatedAsyncioTestCase):
         )
         await self.buttons.on_button_click(None, callback)
         callback.answer.assert_awaited_once()
-        return callback.answer.await_args.args[0]
+        args = callback.answer.await_args.args
+        return args[0] if args else None
 
     async def start_playlist(self):
         await self.downloader.on_new_link(None, self.message)
@@ -213,6 +214,21 @@ class YouTubePlaylistTest(unittest.IsolatedAsyncioTestCase):
         await self.assert_revoked(second)
         self.assertFalse(self.videos._playlists)
         self.assertTrue(self._entries_closed.is_set())
+
+    async def test_playlist_resolution_button_applies_the_cap_to_each_item(self):
+        await self.videos.on_new_youtube(self.message, None, playlist_id=PLAYLIST_ID)
+        stream = self.message.reply.call_args.kwargs["reply_markup"].inline_keyboard[2][0]
+        await self.click(stream)
+        choices = self.control.edit_text.call_args.kwargs["reply_markup"].inline_keyboard
+        await self.click(next(button for row in choices for button in row if button.text == "Up to 720p"))
+        play = self.control.edit_text.call_args.kwargs["reply_markup"].inline_keyboard[1][0]
+        self.assertEqual(await self.click(play), "Playing")
+        first = await self.play_url()
+        self.resolve.assert_awaited_once_with(VIDEO_IDS[0], max_height=720)
+        await self.end(first)
+        second = await self.play_url()
+        self.assertNotEqual(first, second)
+        self.assertEqual(self.resolve.await_args.kwargs, {"max_height": 720})
 
     async def test_stop_cancels_queue_and_revokes_the_active_stream(self):
         await self.start_playlist()

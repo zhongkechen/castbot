@@ -212,6 +212,36 @@ class RetryDownloadButton(Button):
             await callback_query.answer("Url no longer exists")
 
 
+class StreamButton(Button):
+    PREFIX = "q"
+
+    def __init__(self, playing_video, text="STREAM", action="menu"):
+        self.playing_video = playing_video
+        self.text = text
+        self.action = action
+
+    def get_data(self):
+        data = gen_control_data(self.PREFIX, self.playing_video, self.action)
+        if len(data.encode("utf8")) <= 64:
+            return data
+        return gen_data(self.PREFIX, self.playing_video.local_token, self.action)
+
+    @classmethod
+    async def from_data(cls, data, context):
+        _, local_token, payload = parse_data(data)
+        action, _, device_id = payload.partition("~")
+        if action not in {"menu", "back"} and not action.startswith("pick"):
+            return None
+        video = await context.playing_videos.reconstruct_playing_video(
+            local_token, context.from_user, context.message, device_id=device_id or None,
+        )
+        return cls(video, action=action) if video.is_youtube else None
+
+    async def on_click(self, callback_query: CallbackQuery):
+        await callback_query.answer()
+        await self.playing_video.handle_stream_selection(self.action)
+
+
 PlayButton = partial(VideoControlButton, "PLAY")
 StopButton = partial(VideoControlButton, "STOP")
 PauseButton = partial(VideoControlButton, "PAUSE")
@@ -222,7 +252,9 @@ RetryButton = partial(RetryDownloadButton, "RETRY")
 
 
 class Buttons:
-    button_classes: List[Button] = [DeviceSelectButton, DeviceMenuButton, VideoControlButton, RetryDownloadButton]
+    button_classes: List[Button] = [
+        DeviceSelectButton, DeviceMenuButton, VideoControlButton, RetryDownloadButton, StreamButton,
+    ]
 
     def __init__(self, playing_videos, finders, downloader):
         self.playing_videos = playing_videos

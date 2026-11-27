@@ -12,7 +12,8 @@ from castbot.button import Buttons
 from castbot.downloader import Downloader
 from castbot.http import Http
 from castbot.video import PlayingVideos
-from castbot.youtube import resolve_youtube_stream, youtube_video_id, YouTubeRelayError
+from castbot.youtube import StreamOption, YouTubeRelayError, YouTubeStream
+from castbot.youtube import list_youtube_streams, resolve_youtube_stream, youtube_video_id
 
 
 VIDEO_ID = "M7lc1UVf-VE"
@@ -51,6 +52,25 @@ class YouTubeResolverTest(unittest.IsolatedAsyncioTestCase):
         with patch("castbot.youtube.asyncio.create_subprocess_exec", return_value=process):
             with self.assertRaises(YouTubeRelayError):
                 await resolve_youtube_stream(VIDEO_ID)
+
+    async def test_stream_listing_and_explicit_selection_use_compatible_format_filters(self):
+        url = "https://rr1.example.googlevideo.com/videoplayback"
+        metadata = b"\n".join(json.dumps(item).encode() for item in (
+            {"format_id": "22", "height": 720, "fps": 30, "url": url},
+            {"format_id": "18", "height": 360, "fps": 30, "url": url},
+            {"format_id": "99", "height": 1080, "url": "https://example.invalid/video"},
+        ))
+        selected = json.dumps({"url": url, "title": "Video", "http_headers": {}}).encode()
+        with patch("castbot.youtube._youtube_metadata", side_effect=[metadata, selected]) as get_metadata:
+            options = await list_youtube_streams(VIDEO_ID)
+            await resolve_youtube_stream(VIDEO_ID, format_id="22")
+        self.assertEqual([option.value for option in options], ["22", "18"])
+        self.assertEqual(options[0].label, "720p · 30 fps · MP4 (#22)")
+        selectors = [call.args[1] for call in get_metadata.await_args_list]
+        self.assertTrue(selectors[0].startswith("all["))
+        self.assertTrue(selectors[1].endswith("[format_id='22']"))
+        for selector in selectors:
+            self.assertIn("[ext=mp4][vcodec^=avc1][acodec^=mp4a]", selector)
 
 
 class YouTubeRelayTest(unittest.IsolatedAsyncioTestCase):
@@ -113,6 +133,39 @@ class YouTubeRelayTest(unittest.IsolatedAsyncioTestCase):
         )
         await self.buttons.on_button_click(None, callback)
         return callback
+
+    async def test_inline_stream_selection_is_restored_and_used_for_the_relay(self):
+        await self.videos.on_new_youtube(self.message, VIDEO_ID)
+        stream = self.message.reply.call_args.kwargs["reply_markup"].inline_keyboard[2][0]
+        self.assertEqual(stream.text, "STREAM")
+        option = StreamOption("22", "720p · 30 fps · MP4 (#22)")
+        with patch("castbot.video.list_youtube_streams", return_value=[option]) as list_streams:
+            (await self.click(stream)).answer.assert_awaited_once()
+            choices = self.control.edit_text.call_args.kwargs["reply_markup"].inline_keyboard
+            self.assertEqual(choices[0][0].text, "✓ Auto")
+            self.assertEqual(choices[1][0].text, option.label)
+            (await self.click(choices[1][0])).answer.assert_awaited_once()
+        list_streams.assert_awaited_once_with(VIDEO_ID)
+        self.device.play.assert_not_awaited()
+        text, = self.control.edit_text.await_args.args
+        self.assertIn(f"Stream: {option.label}", text)
+
+        self.videos._playing_videos.clear()
+        self.control.text = text.replace("<code>", "").replace("</code>", "")
+        self.control.reply_to_message_id = self.message.id
+        self.bot.get_message.return_value = SimpleNamespace(id=self.message.id, media=None, message=WATCH_URL)
+        play = self.control.edit_text.call_args.kwargs["reply_markup"].inline_keyboard[1][0]
+        source = YouTubeStream(self.upstream.make_url("/media"), "Selected video", {})
+        with patch("castbot.video.resolve_youtube_stream", return_value=source) as resolve:
+            (await self.click(play)).answer.assert_awaited_once_with("Playing")
+        resolve.assert_awaited_once_with(VIDEO_ID, format_id="22")
+        relay_url, _, token = self.device.play.await_args.args
+        try:
+            async with self.client.head(urlsplit(relay_url).path) as response:
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.headers["Content-Type"], "video/mp4")
+        finally:
+            self.http.remove_remote_token(token)
 
     async def test_link_handler_and_play_button_relay_head_get_and_range_until_stop(self):
         await self.downloader.on_new_link(None, self.message)
