@@ -1,9 +1,8 @@
 import asyncio
-import io
 import logging
 import typing
 
-from ..utils import LocalToken
+from ..utils import DeviceControlError, LocalToken
 from ..device import DeviceFinder, Device
 
 __all__ = ["Finder"]
@@ -13,6 +12,23 @@ _ENCODING = "utf8"
 _EOF = b"\n\r"
 _AUTH_MAGIC = b"\xff\xfb\x01"
 _AUTH_OK = b"\xff\xfc\x01\r\nWelcome"
+_AUTH_PROMPT = b"Password: " + _AUTH_MAGIC
+_HANDSHAKE_TIMEOUT = 5
+
+
+async def _read_prefix(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, expected: bytes) -> bytes:
+    reply = bytearray()
+    try:
+        async with asyncio.timeout(_HANDSHAKE_TIMEOUT):
+            while len(reply) < len(expected) and expected.startswith(reply):
+                chunk = await reader.read(len(expected) - len(reply))
+                if not chunk:
+                    raise ConnectionError("VLC closed the connection during the handshake")
+                reply.extend(chunk)
+    except (Exception, asyncio.CancelledError):
+        writer.close()
+        raise
+    return bytes(reply)
 
 
 class VlcDeviceParams:
@@ -49,24 +65,29 @@ class VlcDevice(Device):
     def get_device_name(self) -> str:
         return f"vlc @{self._params.host}"
 
+    def get_device_key(self) -> str:
+        return f"{self._params.host}:{self._params.port}"
+
     async def _call(self, method: str, *args: str):
         reader, writer = await asyncio.open_connection(self._params.host, self._params.port)
-        headers = await reader.read(io.DEFAULT_BUFFER_SIZE)
+        headers = await _read_prefix(reader, writer, _AUTH_PROMPT)
 
         if headers.endswith(_AUTH_MAGIC):
             if self._params.password:
                 writer.write(bytes(self._params.password, _ENCODING) + _EOF)
                 await writer.drain()
 
-                auth_result = await reader.read(io.DEFAULT_BUFFER_SIZE)
+                auth_result = await _read_prefix(reader, writer, _AUTH_OK)
 
                 if not auth_result.startswith(_AUTH_OK):
-                    _LOGGER.error("receive: %s", auth_result.decode(_ENCODING, "ignore"))
-                    return writer.close()
+                    _LOGGER.error("VLC rejected authentication")
+                    writer.close()
+                    raise DeviceControlError("VLC rejected authentication")
 
             else:
                 _LOGGER.error("vlc %s: need password", self._params.host)
-                return writer.close()
+                writer.close()
+                raise DeviceControlError("VLC requires a password")
 
         writer.write(method.encode(_ENCODING) + b" " + b" ".join(a.encode(_ENCODING) for a in args) + _EOF)
 

@@ -1,4 +1,4 @@
-FROM python:3.14
+FROM python:3.15
 
 ENV PYTHONUNBUFFERED=1
 ENV POETRY_VIRTUALENVS_CREATE=0
@@ -23,4 +23,4 @@ RUN /root/.local/bin/poetry install
 
 HEALTHCHECK CMD ["castbot", "--healthcheck"]
 
-CMD ["/app/.venv/bin/castbot", "-vv"]
+CMD ["castbot", "-vv"]

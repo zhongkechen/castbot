@@ -5,6 +5,7 @@ __all__ = [
     "secret_token",
     "ConfigError",
     "NoDeviceException",
+    "DeviceControlError",
     "ActionNotSupportedException",
     "UnknownCallbackException",
     "LocalToken"
@@ -14,16 +15,16 @@ __all__ = [
 class LocalToken:
     def __init__(self, message_id: Union[str, int], token: Optional[Union[str, int]] = None):
         self.message_id = int(message_id)
-        self.token = int(token or secret_token())
+        self.token = secret_token() if token is None else int(token)
 
     def __hash__(self):
-        return (self.message_id << 64) ^ self.token
+        return hash((self.message_id, self.token))
 
     def __eq__(self, other):
-        return isinstance(other, LocalToken) and self.__hash__() == other.__hash__()
+        return isinstance(other, LocalToken) and (self.message_id, self.token) == (other.message_id, other.token)
 
     def __str__(self):
-        return format(self.__hash__(), "x")
+        return format((self.message_id << 64) | self.token, "x")
 
     @classmethod
     def deserialize(cls, local_token_raw: Union[int, str]):
@@ -33,6 +34,10 @@ class LocalToken:
 
 def secret_token(nbytes: int = 8) -> int:
     return int.from_bytes(secrets.token_bytes(nbytes=nbytes))
+
+
+class DeviceControlError(Exception):
+    pass
 
 
 class NoDeviceException(Exception):

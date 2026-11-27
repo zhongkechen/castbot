@@ -2,6 +2,7 @@ import asyncio
 import enum
 import html
 import io
+import re
 import typing
 import xml.etree
 import xml.etree.ElementTree
@@ -138,10 +139,10 @@ class UpnpNotifyServer(RequestHandler):
     async def handle(self, request: Request) -> Response:
         local_token_raw: str = request.match_info["local_token"]
 
-        if not local_token_raw.isdigit():
+        if re.fullmatch(r"[0-9a-fA-F]+", local_token_raw) is None:
             return Response(status=400)
 
-        local_token: LocalToken = LocalToken.deserialize(int(local_token_raw))
+        local_token: LocalToken = LocalToken.deserialize(local_token_raw)
 
         if local_token not in self._devices:
             return Response(status=403)
@@ -200,6 +201,7 @@ class SubscribeTask:
 
         if task is not None:
             task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
             await self._event_handler.async_unsubscribe_all()
 
     async def _loop(self):
@@ -223,35 +225,50 @@ class UpnpDevice(Device):
         self._service = self._device.service(_AVTRANSPORT_SCHEMA)
         self._notify_handler = notify_handler
         self._subscribe_task = None
+        self._subscription_token: LocalToken | None = None
+        self._subscription_lock = asyncio.Lock()
 
     def get_device_name(self) -> str:
         return self._device.friendly_name
 
+    def get_device_key(self) -> str:
+        return self._device.udn
+
     async def stop(self):
         await _upnp_safe_stop(self._service)
 
-    async def on_close(self, local_token: LocalToken):
-        task = self._subscribe_task
-
+    async def _release_subscription(self):
+        task, token = self._subscribe_task, self._subscription_token
+        self._subscribe_task = None
+        self._subscription_token = None
+        if token is not None:
+            self._notify_handler.remove_device(token)
         if task is not None:
             await task.close()
 
-        self._notify_handler.remove_device(local_token)
+    async def on_close(self, local_token: LocalToken):
+        async with self._subscription_lock:
+            if local_token == self._subscription_token:
+                await self._release_subscription()
 
     async def play(self, url: str, title: str, local_token: LocalToken):
-        set_url = self._service.action("SetAVTransportURI")
-        meta = _DLL_METADATA.format(title=escape(ascii_only(title)), url=escape(url), flags=_VIDEO_FLAGS)
-        await set_url.async_call(InstanceID=0, CurrentURI=url, CurrentURIMetaData=meta)
+        async with self._subscription_lock:
+            set_url = self._service.action("SetAVTransportURI")
+            meta = _DLL_METADATA.format(title=escape(ascii_only(title)), url=escape(url), flags=_VIDEO_FLAGS)
+            await set_url.async_call(InstanceID=0, CurrentURI=url, CurrentURIMetaData=meta)
 
-        device_status = DeviceStatus(self)
-        self._notify_handler.add_device(device_status, local_token)
-
-        subscribe_url = urlunparse(urlparse(url)._replace(path=f"/upnp/notify/{local_token}"))
-        self._subscribe_task = SubscribeTask(self._device, self._service, subscribe_url)
-        await self._subscribe_task.start()
-
-        play = self._service.action("Play")
-        await play.async_call(InstanceID=0, Speed="1")
+            await self._release_subscription()
+            subscribe_url = urlunparse(urlparse(url)._replace(path=f"/upnp/notify/{local_token}"))
+            self._subscribe_task = SubscribeTask(self._device, self._service, subscribe_url)
+            self._subscription_token = local_token
+            self._notify_handler.add_device(DeviceStatus(self), local_token)
+            try:
+                await self._subscribe_task.start()
+                play = self._service.action("Play")
+                await play.async_call(InstanceID=0, Speed="1")
+            except (Exception, asyncio.CancelledError):
+                await self._release_subscription()
+                raise
 
     async def resume(self):
         play = self._service.action("Play")

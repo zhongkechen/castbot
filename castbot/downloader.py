@@ -8,7 +8,7 @@ import tempfile
 from typing import Optional
 
 from pyrogram import Client
-from pyrogram.types import Message, InlineKeyboardMarkup
+from pyrogram.types import InlineKeyboardMarkup, LinkPreviewOptions, Message
 
 
 _URL_PATTERN = r"(http|https):\/\/([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:\/~+#-]*[\w@?^=%&\/~+#-])"
@@ -63,25 +63,27 @@ class Downloader:
                         "bv*[vcodec~='avc|hevc|h265|h264']+ba[ext~='m4a|mp4']",
                         "b[ext=mp4][vcodec~='avc|hevc|h265|h264']"
                     ])
-                    cmd = (f"yt-dlp -v -f \"{video_format}\" -o {video_filename} "
-                           f"--write-thumbnail --write-info-json --convert-thumbnails jpg {url}")
-                    logging.info("Downloading video with command: %s", cmd)
-                    process = await asyncio.create_subprocess_shell(cmd)
+                    logging.info("Downloading video with yt-dlp")
+                    process = await asyncio.create_subprocess_exec(
+                        "yt-dlp", "-v", "-f", video_format, "-o", video_filename,
+                        "--write-thumbnail", "--write-info-json", "--convert-thumbnails", "jpg", "--", url,
+                    )
                     await process.communicate()
                     thumbnail_filename = os.path.join(tmpdir, "video1.jpg")
-                    info_json = json.load(open(os.path.join(tmpdir, "video1.info.json"), encoding="utf8"))
-                    downloaded_video = DownloadedVideo(video_filename,
-                                                       thumbnail_filename=thumbnail_filename,
-                                                       title=info_json.get("title"),
-                                                       width=info_json.get("width"),
-                                                       height=info_json.get("height"),
-                                                       duration=int(info_json.get("duration"))
-                                                       )
+                    with open(os.path.join(tmpdir, "video1.info.json"), encoding="utf8") as info_file:
+                        info = json.load(info_file)
+                    downloaded_video = DownloadedVideo(
+                        video_filename,
+                        thumbnail_filename=thumbnail_filename if os.path.isfile(thumbnail_filename) else None,
+                        title=info.get("title") or "",
+                        width=info.get("width") or 0,
+                        height=info.get("height") or 0,
+                        duration=int(info.get("duration") or 0),
+                    )
                 else:  # "you-get"
                     output_filename = os.path.join(tmpdir, "video1")
-                    cmd = f"you-get -O {output_filename} {url}"
-                    logging.info("Downloading video with command: %s", cmd)
-                    process = await asyncio.create_subprocess_shell(cmd)
+                    logging.info("Downloading video with you-get")
+                    process = await asyncio.create_subprocess_exec("you-get", "-O", output_filename, "--", url)
                     video_filename = output_filename + ".mp4"
                     downloaded_video = DownloadedVideo(video_filename)
                     await process.communicate()
@@ -103,8 +105,7 @@ class Downloader:
         if not reply_message:
             reply_message = await message.reply(
                 f"Downloading url {url}",
-                reply_to_message_id=message.id,
-                disable_web_page_preview=True,
+                link_preview_options=LinkPreviewOptions(is_disabled=True),
             )
         else:
             await reply_message.edit_text(f"Downloading url {url}")
@@ -116,13 +117,11 @@ class Downloader:
                 reader = open(downloaded_video.video_filename, mode="rb")
                 video_message = await message.reply_video(
                     reader,
-                    quote=True,
                     caption=downloaded_video.title,
                     width=downloaded_video.width,
                     height=downloaded_video.height,
                     thumb=downloaded_video.thumbnail_filename,
                     duration=downloaded_video.duration,
-                    reply_to_message_id=message.id,
                 )
             await reply_message.edit_text("Upload completed.")
             await reply_message.delete()

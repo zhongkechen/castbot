@@ -1,5 +1,6 @@
 import abc
 import asyncio
+import hashlib
 import importlib
 import logging
 import os.path
@@ -48,6 +49,13 @@ class Device(abc.ABC):
     def on_close(self, local_token: LocalToken):
         raise NotImplementedError
 
+    def get_device_key(self) -> str:
+        return self.get_device_name()
+
+    def get_device_id(self) -> str:
+        key = f"{type(self).__module__}.{type(self).__qualname__}:{self.get_device_key()}"
+        return hashlib.blake2s(key.encode("utf-8"), digest_size=10).hexdigest()
+
     def __repr__(self):
         return self.get_device_name()
 
@@ -59,10 +67,10 @@ class DeviceFinder(abc.ABC):
         self.config = config
         self.request_timeout = int(config.get("request_timeout", 5))
         if self not in self.device_finder:
-            logging.info("DeviceFinder added: %s", config)
+            logging.info("DeviceFinder added: %s", type(self).__name__)
             self.device_finder.add(self)
         else:
-            logging.error("Duplicate DeviceFinder config: %s", config)
+            logging.error("Duplicate DeviceFinder config: %s", type(self).__name__)
             raise ConfigError("Multiple same devices specified in config")
 
     def __hash__(self):
@@ -104,8 +112,9 @@ class DeviceFinderCollection:
         try:
             async with async_timeout.timeout(finder.request_timeout + 1):
                 return await finder.find()
-        except asyncio.CancelledError:
-            pass
+        except Exception as error:
+            logging.warning("Device refresh failed for %s (%s)", type(finder).__name__, type(error).__name__)
+            return []
 
     async def refresh_all_devices(self):
         find_devices = [self._refresh_one_finder(finder) for finder in self._finders]
@@ -117,6 +126,10 @@ class DeviceFinderCollection:
             await self.refresh_all_devices()
         found_devices = [d for d in self._devices if repr(d) == device_name]
         return found_devices[0] if found_devices else None
+
+    async def find_device_by_id(self, device_id: str) -> Device | None:
+        available = await self.list_all_devices()
+        return next((device for device in available if device.get_device_id() == device_id), None)
 
     async def list_all_devices(self):
         if not self._devices:
