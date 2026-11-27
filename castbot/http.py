@@ -11,7 +11,7 @@ from aiohttp.web_response import Response, StreamResponse
 from pyrogram.raw.types import MessageMediaDocument, Document, DocumentAttributeFilename, Message
 
 from .client import BotClient
-from .utils import LocalToken
+from .utils import LocalToken, normalize_media_type
 from .youtube import YouTubeRelayError, YouTubeStream
 
 __all__ = ["Http"]
@@ -155,8 +155,8 @@ class Http:
         result.headers["Content-Length"] = str(stop - start)
 
     @staticmethod
-    def _write_access_control_headers(result: StreamResponse):
-        result.headers.setdefault("Content-Type", "video/mp4")
+    def _write_access_control_headers(result: StreamResponse, content_type: str = "video/mp4"):
+        result.headers.setdefault("Content-Type", content_type)
         result.headers.setdefault("Access-Control-Allow-Origin", "*")
         result.headers.setdefault("Access-Control-Allow-Methods", "GET, OPTIONS")
         result.headers.setdefault("Access-Control-Allow-Headers", "Content-Type")
@@ -307,6 +307,7 @@ class Http:
             return Response(status=404)
 
         size = message.media.document.size
+        content_type = normalize_media_type(message.media.document.mime_type) or "video/mp4"
         start, stop = 0, size
         range_header = request.headers.get("Range") if request.method == "GET" else None
         if range_header is not None:
@@ -339,13 +340,13 @@ class Http:
             response = Response(status=status_code)
             self._write_http_range_headers(response, start, stop, size, partial)
             self._write_filename_header(response, filename)
-            self._write_access_control_headers(response)
+            self._write_access_control_headers(response, content_type)
             return response
 
         stream = StreamResponse(status=status_code)
         self._write_http_range_headers(stream, start, stop, size, partial)
         self._write_filename_header(stream, filename)
-        self._write_access_control_headers(stream)
+        self._write_access_control_headers(stream, content_type)
 
         # Advertise the close before sending headers so the client opens a new connection for its next range.
         stream.force_close()

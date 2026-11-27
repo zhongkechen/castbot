@@ -117,7 +117,7 @@ class VlcDevice(Device):
     async def on_close(self, local_token: LocalToken):
         pass
 
-    async def play(self, url: str, title: str, local_token: LocalToken):
+    async def play(self, url: str, title: str, local_token: LocalToken, *, content_type: str = "video/mp4"):
         await self._call("add", url)
         await self._call("play")
 

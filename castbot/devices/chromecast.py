@@ -36,8 +36,8 @@ class ChromecastDevice(Device):
     async def on_close(self, local_token: LocalToken):
         await run_method_in_executor(self._device.stop)
 
-    async def play(self, url: str, title: str, local_token: LocalToken):
-        await run_method_in_executor(self._device.play_url, url, title=title)
+    async def play(self, url: str, title: str, local_token: LocalToken, *, content_type: str = "video/mp4"):
+        await run_method_in_executor(self._device.play_url, url, title=title, content_type=content_type)
 
     async def playlist_status(self, url: str) -> PlaybackStatus:
         status = self._device.controller.info

@@ -44,7 +44,7 @@ class WebDevice(Device):
             self._playback_url = None
             self._devices.pop(self._remote_token, None)
 
-    async def play(self, url: str, title: str, local_token: LocalToken):
+    async def play(self, url: str, title: str, local_token: LocalToken, *, content_type: str = "video/mp4"):
         self._stop_pending = False
         self._url_to_play = url
         self._playback_url = url

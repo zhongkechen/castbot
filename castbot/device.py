@@ -47,7 +47,7 @@ class Device(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def play(self, url: str, title: str, local_token: LocalToken):
+    async def play(self, url: str, title: str, local_token: LocalToken, *, content_type: str = "video/mp4"):
         raise NotImplementedError
 
     @abc.abstractmethod
