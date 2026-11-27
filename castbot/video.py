@@ -15,7 +15,7 @@ from .client import BotClient
 from .device import Device, DeviceFinderCollection
 from .downloader import extract_url
 from .playlist import PlaylistPlayback
-from .utils import LocalToken, NoDeviceException, ActionNotSupportedException
+from .utils import LocalToken, NoDeviceException, ActionNotSupportedException, normalize_media_type
 from .http import Http
 from .youtube import AUTO_STREAM, PLAYLIST_STREAM_OPTIONS, StreamOption, YouTubeRelayError, YouTubeStream
 from .youtube import list_youtube_streams, resolve_youtube_stream, youtube_playlist_id, youtube_video_id
@@ -370,7 +370,11 @@ class PlayingVideo:
         await self.playing_videos.interrupt_playlist(self.playing_device)
         await self.playing_device.stop()
         uri = self.playing_videos.add_to_http(self)
-        await self.playing_device.play(uri, str(filename), self.local_token)
+        content_type = self.telegram_content_type(self.video_message)
+        if content_type:
+            await self.playing_device.play(uri, str(filename), self.local_token, content_type=content_type)
+        else:
+            await self.playing_device.play(uri, str(filename), self.local_token)
 
     async def _play_youtube(self):
         device = self.playing_device
@@ -442,6 +446,17 @@ class PlayingVideo:
             self.playing_device = device
             self.playing_videos.set_user_device(self.user_id, device)
             await self.send_stopped_control_message()
+
+    @staticmethod
+    def telegram_content_type(message: Message) -> str | None:
+        media = getattr(message, "media", None)
+        if isinstance(media, MessageMediaDocument):
+            return normalize_media_type(getattr(media.document, "mime_type", None))
+        for name in ("document", "video", "audio", "voice", "animation"):
+            content_type = normalize_media_type(getattr(getattr(message, name, None), "mime_type", None))
+            if content_type:
+                return content_type
+        return None
 
     @staticmethod
     def pyrogram_filename(message: Message) -> str:

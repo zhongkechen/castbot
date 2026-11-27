@@ -109,7 +109,7 @@ class XbmcDevice(Device):
         if players:
             await self._call("Player.Stop", playerid=players[0]["playerid"])
 
-    async def play(self, url: str, title: str, local_token: LocalToken):
+    async def play(self, url: str, title: str, local_token: LocalToken, *, content_type: str = "video/mp4"):
         await self._call("Playlist.Clear", playlistid=0)
         await self._call("Playlist.Add", playlistid=0, item={"file": url})
         await self._call("Player.Open", item={"playlistid": 0}, options={"repeat": "one"})

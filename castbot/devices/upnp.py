@@ -28,6 +28,11 @@ __all__ = ["Finder"]
 _AVTRANSPORT_SCHEMA = "urn:schemas-upnp-org:service:AVTransport:1"
 
 _VIDEO_FLAGS = "21700000000000000000000000000000"
+_MEDIA_CLASSES = {
+    "audio": "object.item.audioItem.musicTrack",
+    "image": "object.item.imageItem.photo",
+    "video": "object.item.videoItem.movie",
+}
 
 _DLL_METADATA = """
 <DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/"
@@ -36,11 +41,11 @@ _DLL_METADATA = """
     xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">
     <item id="R:0/0/0" parentID="R:0/0" restricted="true">
         <dc:title>{title}</dc:title>
-        <upnp:class>object.item.videoItem.movie</upnp:class>
+        <upnp:class>{media_class}</upnp:class>
         <desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">
             SA_RINCON65031_
         </desc>
-        <res protocolInfo="http-get:*:video/mp4:DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS={flags}">{url}</res>
+        <res protocolInfo="http-get:*:{content_type}:DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS={flags}">{url}</res>
     </item>
 </DIDL-Lite>
 """
@@ -251,10 +256,14 @@ class UpnpDevice(Device):
             if local_token == self._subscription_token:
                 await self._release_subscription()
 
-    async def play(self, url: str, title: str, local_token: LocalToken):
+    async def play(self, url: str, title: str, local_token: LocalToken, *, content_type: str = "video/mp4"):
         async with self._subscription_lock:
             set_url = self._service.action("SetAVTransportURI")
-            meta = _DLL_METADATA.format(title=escape(ascii_only(title)), url=escape(url), flags=_VIDEO_FLAGS)
+            meta = _DLL_METADATA.format(
+                title=escape(ascii_only(title)), url=escape(url), flags=_VIDEO_FLAGS,
+                media_class=_MEDIA_CLASSES.get(content_type.split("/", 1)[0], "object.item"),
+                content_type=escape(content_type),
+            )
             await set_url.async_call(InstanceID=0, CurrentURI=url, CurrentURIMetaData=meta)
 
             await self._release_subscription()

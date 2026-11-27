@@ -1,8 +1,10 @@
+import re
 import secrets
 from typing import Optional, Union
 
 __all__ = [
     "secret_token",
+    "normalize_media_type",
     "ConfigError",
     "NoDeviceException",
     "DeviceControlError",
@@ -10,6 +12,14 @@ __all__ = [
     "UnknownCallbackException",
     "LocalToken"
 ]
+
+_MEDIA_TYPE = re.compile(r"[A-Za-z0-9!#$%&'*+.^_`|~\-]+/[A-Za-z0-9!#$%&'*+.^_`|~\-]+")
+
+
+def normalize_media_type(value: str | None) -> str | None:
+    if isinstance(value, str) and _MEDIA_TYPE.fullmatch(value.strip()):
+        return value.strip().lower()
+    return None
 
 
 class LocalToken:
