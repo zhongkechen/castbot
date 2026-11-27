@@ -247,6 +247,7 @@ class Http:
                     for name in ("Content-Length", "Content-Range", "Accept-Ranges")
                     if name in upstream.headers
                 }
+                headers["Cache-Control"] = "no-store"
                 if request.method == "HEAD":
                     response = Response(status=upstream.status, headers=headers)
                     self._write_access_control_headers(response)

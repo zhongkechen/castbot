@@ -77,9 +77,9 @@ class PlayingVideos:
         )
         return self._playing_videos[local_token]
 
-    def add_to_http(self, playing_video, youtube_stream: YouTubeStream | None = None):
+    def add_to_http(self, playing_video, youtube_stream: YouTubeStream | None = None, *, relay=None):
         self._playing_videos[playing_video.local_token] = playing_video
-        return self._http.add_remote_token(playing_video, youtube_stream)
+        return self._http.add_remote_token(relay or playing_video, youtube_stream)
 
     def is_streaming(self, local_token: LocalToken):
         return self._http.has_remote_token(local_token)
@@ -94,7 +94,7 @@ class PlayingVideos:
         if video.playlist_id and video.playing_device:
             current = self._playlists.get(video.playing_device.get_device_id())
             return current is not None and current[0] is video
-        return self.is_streaming(video.local_token)
+        return self.is_streaming(video.playback_token)
 
     async def interrupt_playlist(self, device: Device, owner=None) -> bool:
         if not self._playlists:
@@ -184,6 +184,15 @@ class PlayingVideos:
         self._user_data[user_id] = user_data
 
 
+class YouTubePlayback:
+    def __init__(self, video: "PlayingVideo"):
+        self.local_token = LocalToken(video.local_token.message_id)
+        self._video = video
+
+    async def close(self, remaining):
+        await self._video.close(remaining, relay=self)
+
+
 class PlayingVideo:
     def __init__(
         self,
@@ -210,6 +219,13 @@ class PlayingVideo:
         self._playback_lock = asyncio.Lock()
         self._stream_choice = AUTO_STREAM
         self._stream_options: list[StreamOption] | None = None
+        self._youtube_playback: YouTubePlayback | None = None
+
+    @property
+    def playback_token(self) -> LocalToken:
+        if self._youtube_playback is not None:
+            return self._youtube_playback.local_token
+        return self.local_token
 
     @property
     def is_youtube(self) -> bool:
@@ -380,12 +396,21 @@ class PlayingVideo:
             upstream = await resolve_youtube_stream(self.youtube_id)
         await self.playing_videos.interrupt_playlist(device)
         await device.stop()
-        uri = self.playing_videos.add_to_http(self, upstream)
+        self._remove_youtube_playback()
+        relay = YouTubePlayback(self)
+        self._youtube_playback = relay
+        uri = self.playing_videos.add_to_http(self, upstream, relay=relay)
         try:
-            await device.play(uri, upstream.title, self.local_token)
+            await device.play(uri, upstream.title, relay.local_token)
         except (Exception, asyncio.CancelledError):
-            self.playing_videos.remove_from_http(self.local_token)
+            self._remove_youtube_playback()
             raise
+
+    def _remove_youtube_playback(self):
+        if self._youtube_playback is not None:
+            token = self._youtube_playback.local_token
+            self._youtube_playback = None
+            self.playing_videos.remove_from_http(token)
 
     async def stop(self):
         async with self._playback_lock:
@@ -396,7 +421,7 @@ class PlayingVideo:
                     await self.finish_playlist(None)
                 return
             if self.youtube_id:
-                self.playing_videos.remove_from_http(self.local_token)
+                self._remove_youtube_playback()
             if self.playing_device:
                 # noinspection PyBroadException
                 try:
@@ -426,14 +451,18 @@ class PlayingVideo:
             return await self.send_playing_control_message()
         raise ActionNotSupportedException
 
-    async def close(self, remains):
+    async def close(self, remains, *, relay: YouTubePlayback | None = None):
         async with self._playback_lock:
-            if self.youtube_id and self.playing_videos.is_streaming(self.local_token):
-                return
+            token = self.local_token
+            if relay is not None:
+                if self._youtube_playback is not relay:
+                    return
+                self._youtube_playback = None
+                token = relay.local_token
             try:
                 await self.send_stopped_control_message(remaining=remains)
                 if not self.playing_videos.has_active_playlist(self.playing_device):
-                    await self.playing_device.on_close(self.local_token)
+                    await self.playing_device.on_close(token)
             finally:
                 self.playing_videos.remove(self)
 
