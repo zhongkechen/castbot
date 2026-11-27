@@ -17,7 +17,9 @@ def playback_controller(device):
     video = PlayingVideo(
         local_token=LocalToken(123, 9),
         user_id=99,
-        playing_videos=SimpleNamespace(add_to_http=Mock(return_value="http://media.invalid/stream/123/9")),
+        playing_videos=SimpleNamespace(
+            add_to_http=Mock(return_value="http://media.invalid/stream/123/9"), interrupt_playlist=AsyncMock(),
+        ),
         playing_device=device,
         video_message=SimpleNamespace(id=123, document=SimpleNamespace(file_name="dummy.mp4")),
         control_message=control,

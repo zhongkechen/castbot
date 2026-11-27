@@ -11,6 +11,7 @@ from yarl import URL
 
 _YOUTUBE_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"}
 _VIDEO_ID = re.compile(r"[A-Za-z0-9_-]{11}")
+_PLAYLIST_ID = re.compile(r"[A-Za-z0-9_-]+")
 _FORMAT = "best[protocol=https][ext=mp4][vcodec^=avc1][acodec^=mp4a]"
 _UPSTREAM_HEADERS = {"accept", "accept-language", "origin", "referer", "user-agent"}
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
@@ -38,6 +39,41 @@ def youtube_video_id(url: str) -> str | None:
     else:
         return None
     return video_id if _VIDEO_ID.fullmatch(video_id) else None
+
+
+def youtube_playlist_id(url: str) -> str | None:
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return None
+    if parsed.scheme not in {"http", "https"} or parsed.hostname not in _YOUTUBE_HOSTS or parsed.path != "/playlist":
+        return None
+    playlist_id = parse_qs(parsed.query).get("list", [""])[0]
+    return playlist_id if _PLAYLIST_ID.fullmatch(playlist_id) else None
+
+
+async def iter_youtube_playlist(playlist_id: str):
+    url = f"https://www.youtube.com/playlist?list={playlist_id}"
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "yt-dlp", "--ignore-config", "--yes-playlist", "--flat-playlist", "--lazy-playlist",
+            "--simulate", "--socket-timeout", "10", "--print", "%(id)s", "--", url,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        )
+        try:
+            while line := await asyncio.wait_for(process.stdout.readline(), timeout=30):
+                video_id = line.decode("ascii", errors="replace").strip()
+                if _VIDEO_ID.fullmatch(video_id):
+                    yield video_id
+            if await asyncio.wait_for(process.wait(), timeout=5) != 0:
+                raise YouTubeRelayError("Could not read this YouTube playlist.")
+        finally:
+            if process.returncode is None:
+                with suppress(ProcessLookupError):
+                    process.kill()
+                await process.communicate()
+    except (OSError, TimeoutError, ValueError):
+        raise YouTubeRelayError("Could not read this YouTube playlist.") from None
 
 
 def _is_youtube_media_url(url: URL) -> bool:

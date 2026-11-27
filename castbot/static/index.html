@@ -13,7 +13,11 @@
                 if (this.status === 200) {
                     inputPassword.hidden = true;
                     buttonPassword.hidden = true;
-                    pollVideo(xhttp.responseText);
+                    const token = xhttp.responseText;
+                    const player = document.getElementById("player");
+                    player.onended = () => reportPlayback(token, "ended");
+                    player.onerror = source.onerror = () => reportPlayback(token, "error");
+                    pollVideo(token);
                 } else {
                     window.alert("wrong password");
                 }
@@ -21,6 +25,15 @@
 
             xhttp.open("GET", "/web/api/register/" + inputPassword.value, true);
             xhttp.send();
+        }
+
+        function reportPlayback(token, event) {
+            const url = source.getAttribute("src");
+            if (url) {
+                const request = new XMLHttpRequest();
+                request.open("POST", "/web/api/playback/" + token + "/" + event, true);
+                request.send(url);
+            }
         }
 
         function pollVideo(token) {

@@ -10,7 +10,7 @@ from typing import Optional
 from pyrogram import Client
 from pyrogram.types import InlineKeyboardMarkup, LinkPreviewOptions, Message
 
-from .youtube import youtube_video_id
+from .youtube import youtube_playlist_id, youtube_video_id
 
 
 _URL_PATTERN = re.compile(r"(http|https):\/\/([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:\/~+#-]*[\w@?^=%&\/~+#-])")
@@ -102,6 +102,9 @@ class Downloader:
         return None
 
     async def download_url(self, message: Message, url: str, reply_message=None):
+        playlist_id = youtube_playlist_id(url)
+        if playlist_id:
+            return await self._playing_videos.on_new_youtube(message, None, reply_message, playlist_id=playlist_id)
         video_id = youtube_video_id(url)
         if video_id:
             return await self._playing_videos.on_new_youtube(message, video_id, reply_message)

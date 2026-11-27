@@ -1,5 +1,6 @@
 import abc
 import asyncio
+import enum
 import hashlib
 import importlib
 import logging
@@ -32,6 +33,14 @@ class RequestHandler(abc.ABC):
 RoutersDefType = typing.List[RequestHandler]
 
 
+class PlaybackStatus(enum.Enum):
+    BUFFERING = enum.auto()
+    ACTIVE = enum.auto()  # Playing or paused.
+    IDLE = enum.auto()  # The device stopped; some protocols do not report why.
+    FINISHED = enum.auto()
+    INTERRUPTED = enum.auto()
+
+
 class Device(abc.ABC):
     @abc.abstractmethod
     async def stop(self):
@@ -55,6 +64,15 @@ class Device(abc.ABC):
     def get_device_id(self) -> str:
         key = f"{type(self).__module__}.{type(self).__qualname__}:{self.get_device_key()}"
         return hashlib.blake2s(key.encode("utf-8"), digest_size=10).hexdigest()
+
+    async def play_playlist_item(self, url: str, title: str, local_token: LocalToken):
+        await self.play(url, title, local_token)
+
+    async def playlist_status(self, url: str) -> PlaybackStatus:
+        raise NotImplementedError
+
+    async def close_playlist_item(self, local_token: LocalToken):
+        pass
 
     def __repr__(self):
         return self.get_device_name()
