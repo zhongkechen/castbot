@@ -15,6 +15,7 @@
                     buttonPassword.hidden = true;
                     const token = xhttp.responseText;
                     const player = document.getElementById("player");
+                    player.onplaying = () => reportPlayback(token, "playing");
                     player.onended = () => reportPlayback(token, "ended");
                     player.onerror = source.onerror = () => reportPlayback(token, "error");
                     pollVideo(token);
@@ -27,8 +28,7 @@
             xhttp.send();
         }
 
-        function reportPlayback(token, event) {
-            const url = source.getAttribute("src");
+        function reportPlayback(token, event, url = source.getAttribute("src")) {
             if (url) {
                 const request = new XMLHttpRequest();
                 request.open("POST", "/web/api/playback/" + token + "/" + event, true);
@@ -48,9 +48,10 @@
                     }
 
                     player.pause();
-                    source.setAttribute("src", xhttp.responseText);
+                    const url = xhttp.responseText;
+                    source.setAttribute("src", url);
                     player.load();
-                    player.play();
+                    player.play().catch(() => reportPlayback(token, "error", url));
                 } else if (this.status === 204) {
                     player.pause();
                     source.removeAttribute("src");
