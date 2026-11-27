@@ -231,6 +231,34 @@ class YouTubeRelayTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(response.status, 403)
         self.assertEqual(len(self.upstream_requests), 4)
 
+    async def test_replaying_with_another_format_rotates_the_relay_url(self):
+        await self.videos.on_new_youtube(self.message, VIDEO_ID)
+        video = next(iter(self.videos._playing_videos.values()))
+        self.addAsyncCleanup(video.stop)
+        source = YouTubeStream(self.upstream.make_url("/media"), "Test video", {})
+        with patch("castbot.video.resolve_youtube_stream", return_value=source) as resolve:
+            await video.play()
+            old_url, _, old_token = self.device.play.await_args.args
+            old_relay = self.http._tokens[old_token]
+            await video.stop()
+            with patch("castbot.video.list_youtube_streams", return_value=[StreamOption("22", "720p MP4 (#22)")]):
+                await video.handle_stream_selection("pick22")
+            await video.play()
+            resolve.assert_awaited_with(VIDEO_ID, format_id="22")
+
+        current_url, _, current_token = self.device.play.await_args.args
+        self.assertNotEqual(current_url, old_url)
+        self.assertNotEqual(current_token, video.local_token)
+        self.assertIs(self.videos._playing_videos[video.local_token], video)
+        await old_relay.close(None)
+        self.device.on_close.assert_not_awaited()
+        async with self.client.get(urlsplit(old_url).path, headers={"Range": "bytes=2-4"}) as response:
+            self.assertEqual(response.status, 403)
+        async with self.client.get(urlsplit(current_url).path, headers={"Range": "bytes=2-4"}) as response:
+            self.assertEqual(response.status, 206)
+            self.assertEqual(response.headers["Cache-Control"], "no-store")
+            self.assertEqual(await response.read(), MEDIA[2:5])
+
     async def test_reconstructs_youtube_controller_from_original_text_message(self):
         await self.videos.on_new_youtube(self.message, VIDEO_ID)
         video = next(iter(self.videos._playing_videos.values()))
