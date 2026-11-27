@@ -5,7 +5,7 @@ from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 
 from ..device import DeviceFinder, RoutersDefType, Device, PlaybackStatus, RequestHandler
-from ..utils import secret_token, LocalToken
+from ..utils import DeviceControlError, secret_token, LocalToken
 
 __all__ = ["Finder"]
 
@@ -31,6 +31,7 @@ class WebDevice(Device):
     async def stop(self):
         self._url_to_play = None
         self._playback_url = None
+        self._playback_token = None
         self._stop_pending = True
 
     def consume_stop(self) -> bool:
@@ -40,12 +41,12 @@ class WebDevice(Device):
 
     async def on_close(self, local_token: LocalToken):
         if self._playback_token == local_token:
-            self._playback_token = None
-            self._playback_url = None
-            self._devices.pop(self._remote_token, None)
+            await self.stop()
 
     async def play(self, url: str, title: str, local_token: LocalToken):
         self._stop_pending = False
+        if self._devices.get(self._remote_token) is not self:
+            raise DeviceControlError("Web player disconnected. Select the registered player again.")
         self._url_to_play = url
         self._playback_url = url
         self._playback_event = None

@@ -1,6 +1,6 @@
 # Keep active Web playback registered during stale stream cleanup
 
-A Web player tracks the token that owns its current playback. An earlier stream can finish its own cleanup without removing the browser registration. Cleanup for the current playback still releases the registration.
+A Web player tracks the token that owns its current playback. Cleanup stops the current playback and keeps the browser registered for future videos. Older streams leave the current playback alone.
 
 Run the regression tests from the repository root after installing the locked dependencies.
 

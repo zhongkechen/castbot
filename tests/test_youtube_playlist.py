@@ -105,8 +105,8 @@ class YouTubePlaylistTest(unittest.IsolatedAsyncioTestCase):
         await self.upstream.start_server()
         self.addAsyncCleanup(self.upstream.close)
 
-        self.device = WebDevice("Browser", 42, {})
-        devices = {42: self.device}
+        devices = {}
+        self.device = devices[42] = WebDevice("Browser", 42, devices)
         self.control = SimpleNamespace(edit_text=AsyncMock())
         self.message = SimpleNamespace(
             text=PLAYLIST_URL, id=17, from_user=SimpleNamespace(id=4),
