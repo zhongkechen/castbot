@@ -1,11 +1,11 @@
-"""Verify that only the current Web playback owns the browser registration."""
+"""Verify Web playback cleanup preserves the browser registration."""
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from castbot.devices.web import WebDevice
 from castbot.http import Http
-from castbot.utils import LocalToken
+from castbot.utils import DeviceControlError, LocalToken
 from castbot.video import PlayingVideos
 
 
@@ -48,13 +48,27 @@ class StalePlaybackCleanupTest(unittest.IsolatedAsyncioTestCase):
         control_a.edit_text.assert_awaited_once()
         control_b.edit_text.assert_not_awaited()
 
-        # The current playback still releases its browser on cleanup.
+        # Cleaning up the current stream stops playback and retains the registered browser.
         server._stream_transports[token_b].clear()
         await server._timeout_handler(token_b, 8)
-        self.assertNotIn(10, devices)
+        self.assertIs(devices[10], browser)
+        self.assertTrue(browser.consume_stop())
         self.assertNotIn(token_b, server._tokens)
         self.assertNotIn(token_b, videos._playing_videos)
         control_b.edit_text.assert_awaited_once()
+
+        await browser.play(uri_b, "Replay", token_b)
+        self.assertEqual(browser.get_url_to_play(), uri_b)
+
+    async def test_deregistered_browser_rejects_a_play_command(self):
+        devices = {}
+        stale = devices[10] = WebDevice("Browser", 10, devices)
+        del devices[10]
+        current = devices[20] = WebDevice("Browser", 20, devices)
+
+        with self.assertRaisesRegex(DeviceControlError, "Select the registered player again"):
+            await stale.play("http://example.invalid/stream/101/1", "A", LocalToken(101, 1))
+        self.assertIsNone(current.get_url_to_play())
 
 
 if __name__ == "__main__":
