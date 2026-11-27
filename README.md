@@ -22,6 +22,8 @@ Send a YouTube video link to the bot, choose a device and press **PLAY**. The pl
 
 Send a YouTube playlist link (`https://www.youtube.com/playlist?list=…`) to play it in order. CastBot resolves each video as it reaches that item, skips entries without a compatible MP4, and advances when the device finishes playing. **STOP** cancels the queue.
 
+Use **STREAM** before pressing **PLAY** to choose a compatible format for a video or a maximum resolution for a playlist. **Auto** selects the best compatible stream. To change the selection during playback, press **STOP** first.
+
 ## Known issues
 
 - Chromecast (1st, 2nd and 3rd Gen.) [only supports H.264 and VP8 video codecs](https://developers.google.com/cast/docs/media#video_codecs)

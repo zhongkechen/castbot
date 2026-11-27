@@ -22,13 +22,15 @@ class PlaylistTrack:
 
 
 class PlaylistPlayback:
-    def __init__(self, playlist_id: str, message_id: int, device: Device, http: Http, on_item, on_finish):
+    def __init__(self, playlist_id: str, message_id: int, device: Device, http: Http, on_item, on_finish,
+                 *, max_height: int | None = None):
         self._playlist_id = playlist_id
         self._message_id = message_id
         self._device = device
         self._http = http
         self._on_item = on_item
         self._on_finish = on_finish
+        self._max_height = max_height
         self._started = asyncio.get_running_loop().create_future()
         self._task: asyncio.Task | None = None
         self._stop_requested = False
@@ -60,7 +62,10 @@ class PlaylistPlayback:
                 async for video_id in entries:
                     index += 1
                     try:
-                        source = await resolve_youtube_stream(video_id)
+                        if self._max_height is None:
+                            source = await resolve_youtube_stream(video_id)
+                        else:
+                            source = await resolve_youtube_stream(video_id, max_height=self._max_height)
                     except YouTubeRelayError:
                         logging.info("Skipping unavailable YouTube playlist item %s", video_id)
                         skipped += 1
