@@ -20,6 +20,7 @@ class WebDevice(Device):
     def __init__(self, device_name: str, token: int, devices: typing.Dict[int, "WebDevice"]):
         self._device_name = device_name
         self._remote_token = token
+        self._playback_token: LocalToken | None = None
         self._devices = devices
         self._manipulation_timestamp = time.time()
 
@@ -27,10 +28,13 @@ class WebDevice(Device):
         self._url_to_play = None
 
     async def on_close(self, local_token: LocalToken):
-        self._devices.pop(self._remote_token, None)
+        if self._playback_token == local_token:
+            self._playback_token = None
+            self._devices.pop(self._remote_token, None)
 
     async def play(self, url: str, title: str, local_token: LocalToken):
         self._url_to_play = url
+        self._playback_token = local_token
 
     def manipulate_timestamp(self) -> float:
         old = self._manipulation_timestamp
