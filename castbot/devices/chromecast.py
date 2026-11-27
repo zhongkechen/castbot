@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import functools
 import typing
+from urllib.parse import urlsplit
 
 import catt.api
 
@@ -34,7 +35,18 @@ class ChromecastDevice(Device):
         await run_method_in_executor(self._device.stop)
 
     async def on_close(self, local_token: LocalToken):
-        await run_method_in_executor(self._device.stop)
+        await run_method_in_executor(self._stop_closed_stream, local_token)
+
+    def _stop_closed_stream(self, local_token: LocalToken):
+        content_id = self._device.controller.info.get("content_id")
+        if not isinstance(content_id, str):
+            return
+        try:
+            path = urlsplit(content_id).path
+        except ValueError:
+            return
+        if path == f"/stream/{local_token.message_id}/{local_token.token}":
+            self._device.stop()
 
     async def play(self, url: str, title: str, local_token: LocalToken):
         await run_method_in_executor(self._device.play_url, url, title=title)
