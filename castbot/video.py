@@ -1,3 +1,4 @@
+import asyncio
 import html
 import logging
 import re
@@ -5,13 +6,16 @@ import typing
 
 from pyrogram import Client
 from pyrogram.errors import MessageNotModified
+from pyrogram.raw.types import MessageMediaDocument
 from pyrogram.types import Message, InlineKeyboardMarkup
 
 from .button import DeviceSelectButton, PlayButton, StopButton, PauseButton, ResumeButton, RefreshButton, DeviceButton
 from .client import BotClient
 from .device import Device, DeviceFinderCollection
+from .downloader import extract_url
 from .utils import LocalToken, NoDeviceException, ActionNotSupportedException
 from .http import Http
+from .youtube import YouTubeStream, resolve_youtube_stream, youtube_video_id
 
 
 class UserData:
@@ -38,13 +42,19 @@ class PlayingVideos:
                                control_message=None)
         await video.send_stopped_control_message()
 
+    async def on_new_youtube(self, message: Message, video_id: str, control_message=None):
+        video = self.new_video(
+            LocalToken(message.id), message.from_user.id, message, control_message=control_message, youtube_id=video_id,
+        )
+        await video.send_stopped_control_message()
+
     def remove(self, playing_video: "PlayingVideo"):
         local_token = playing_video.local_token
         if local_token in self._playing_videos:
             del self._playing_videos[local_token]
 
     def new_video(self, local_token: LocalToken, user_id, video_message,
-                  link_message=None, control_message=None, device=None):
+                  link_message=None, control_message=None, device=None, youtube_id=None):
         device = device or self.get_user_device(user_id)
         self._playing_videos[local_token] = PlayingVideo(
             local_token=local_token,
@@ -54,11 +64,19 @@ class PlayingVideos:
             video_message=video_message,
             link_message=link_message,
             control_message=control_message,
+            youtube_id=youtube_id,
         )
         return self._playing_videos[local_token]
 
-    def add_to_http(self, playing_video):
-        return self._http.add_remote_token(playing_video)
+    def add_to_http(self, playing_video, youtube_stream: YouTubeStream | None = None):
+        self._playing_videos[playing_video.local_token] = playing_video
+        return self._http.add_remote_token(playing_video, youtube_stream)
+
+    def is_streaming(self, local_token: LocalToken):
+        return self._http.has_remote_token(local_token)
+
+    def remove_from_http(self, local_token: LocalToken):
+        self._http.remove_remote_token(local_token)
 
     async def reconstruct_playing_video(self, local_token: LocalToken, user_id, control_message,
                                         *, device_id=None):
@@ -66,6 +84,10 @@ class PlayingVideos:
             return self._playing_videos[local_token]
         # re-construct PlayVideo when the bot is restarted
         video_message: Message = await self._bot_client.get_message(local_token.message_id)
+        youtube_id = None
+        if not isinstance(getattr(video_message, "media", None), MessageMediaDocument):
+            link = extract_url(getattr(video_message, "message", None))
+            youtube_id = youtube_video_id(link) if link else None
         if control_message.reply_to_message_id and control_message.reply_to_message_id != local_token.message_id:
             link_message = await self._bot_client.get_message(control_message.reply_to_message_id)
         else:
@@ -79,7 +101,7 @@ class PlayingVideos:
             device = device or self.get_user_device(user_id)
 
         video = self.new_video(local_token, user_id, video_message,
-                               link_message=link_message, control_message=control_message)
+                               link_message=link_message, control_message=control_message, youtube_id=youtube_id)
         video.playing_device = device
         return video
 
@@ -114,6 +136,7 @@ class PlayingVideo:
         video_message: typing.Optional[Message] = None,
         link_message: typing.Optional[Message] = None,
         control_message: typing.Optional[Message] = None,
+        youtube_id: str | None = None,
     ):
         self.local_token = local_token
         self.user_id = user_id
@@ -122,6 +145,8 @@ class PlayingVideo:
         self.link_message = link_message
         self.control_message = control_message
         self.playing_videos = playing_videos
+        self.youtube_id = youtube_id
+        self._playback_lock = asyncio.Lock()
 
     def _gen_device_str(self):
         return (
@@ -139,6 +164,8 @@ class PlayingVideo:
         return name
 
     def _gen_message_str(self):
+        if self.youtube_id:
+            return f"for YouTube video <code>{self.youtube_id}</code>"
         return f"for file <code>{self.video_message.id}</code>"
 
     async def send_stopped_control_message(self, remaining=None):
@@ -186,9 +213,16 @@ class PlayingVideo:
             self.control_message = await self.video_message.reply(text, reply_markup=InlineKeyboardMarkup(buttons))
 
     async def play(self):
-        if not self.playing_device:
-            raise NoDeviceException
+        async with self._playback_lock:
+            if not self.playing_device:
+                raise NoDeviceException
+            if self.youtube_id:
+                await self._play_youtube()
+            else:
+                await self._play_telegram_video()
+            await self.send_playing_control_message()
 
+    async def _play_telegram_video(self):
         try:
             filename = self.pyrogram_filename(self.video_message)
         except TypeError:
@@ -197,19 +231,32 @@ class PlayingVideo:
         await self.playing_device.stop()
         uri = self.playing_videos.add_to_http(self)
         await self.playing_device.play(uri, str(filename), self.local_token)
-        await self.send_playing_control_message()
+
+    async def _play_youtube(self):
+        device = self.playing_device
+        upstream = await resolve_youtube_stream(self.youtube_id)
+        await device.stop()
+        uri = self.playing_videos.add_to_http(self, upstream)
+        try:
+            await device.play(uri, upstream.title, self.local_token)
+        except (Exception, asyncio.CancelledError):
+            self.playing_videos.remove_from_http(self.local_token)
+            raise
 
     async def stop(self):
-        if self.playing_device:
-            # noinspection PyBroadException
-            try:
-                await self.playing_device.stop()
-            except Exception:
-                # make sure stop always succeeds even if the device is gone
-                logging.exception("Failed to stop device %r", self.playing_device)
-        await self.send_stopped_control_message()
-        if not self.playing_device:
-            raise NoDeviceException
+        async with self._playback_lock:
+            if self.youtube_id:
+                self.playing_videos.remove_from_http(self.local_token)
+            if self.playing_device:
+                # noinspection PyBroadException
+                try:
+                    await self.playing_device.stop()
+                except Exception:
+                    # make sure stop always succeeds even if the device is gone
+                    logging.exception("Failed to stop device %r", self.playing_device)
+            await self.send_stopped_control_message()
+            if not self.playing_device:
+                raise NoDeviceException
 
     async def pause(self):
         if not self.playing_device:
@@ -228,15 +275,20 @@ class PlayingVideo:
         raise ActionNotSupportedException
 
     async def close(self, remains):
-        device = self.playing_device
-        await self.send_stopped_control_message(remaining=remains)
-        await device.on_close(self.local_token)
-        self.playing_videos.remove(self)
+        async with self._playback_lock:
+            if self.youtube_id and self.playing_videos.is_streaming(self.local_token):
+                return
+            try:
+                await self.send_stopped_control_message(remaining=remains)
+                await self.playing_device.on_close(self.local_token)
+            finally:
+                self.playing_videos.remove(self)
 
     async def select_device(self, device: Device):
-        self.playing_device = device
-        self.playing_videos.set_user_device(self.user_id, device)
-        await self.send_stopped_control_message()
+        async with self._playback_lock:
+            self.playing_device = device
+            self.playing_videos.set_user_device(self.user_id, device)
+            await self.send_stopped_control_message()
 
     @staticmethod
     def pyrogram_filename(message: Message) -> str:

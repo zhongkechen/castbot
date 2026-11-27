@@ -9,6 +9,7 @@ ENV POETRY_VIRTUALENVS_CREATE=0
 RUN apt-get update && apt-get install -y ffmpeg && apt-get clean && rm -rf /var/lib/apt/lists/*
 RUN curl -sSL https://install.python-poetry.org | python -
 RUN curl -fsSL https://deno.land/install.sh | sh
+ENV PATH="/root/.deno/bin:${PATH}"
 # RUN python -m pip install --upgrade pip poetry
 
 WORKDIR /app

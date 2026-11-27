@@ -9,6 +9,7 @@ from pyrogram.types import InlineKeyboardButton, CallbackQuery
 from .downloader import Downloader
 from .utils import ActionNotSupportedException, DeviceControlError, LocalToken, NoDeviceException
 from .utils import UnknownCallbackException
+from .youtube import YouTubeRelayError
 
 
 class Context:
@@ -93,6 +94,8 @@ class VideoControlButton(Button):
             await callback_query.answer("Device not selected")
         except ActionNotSupportedException:
             await callback_query.answer("Action not supported by the device")
+        except YouTubeRelayError as error:
+            await callback_query.answer(str(error), show_alert=True)
         except DeviceControlError as error:
             await callback_query.answer(f"Device command failed: {error}")
         except Exception as ex:
